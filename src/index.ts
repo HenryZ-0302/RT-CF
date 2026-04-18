@@ -17,10 +17,10 @@ type AccountRecord = {
 };
 
 type AccountInput = {
-  id: string;
+  id?: string;
   label?: string;
   baseUrl: string;
-  apiKey: string;
+  apiKey?: string;
   enabled?: boolean;
   extraHeaders?: Record<string, string>;
 };
@@ -100,15 +100,20 @@ function createEmptyStat(): AccountStat {
   };
 }
 
-function sanitizeAccountInput(payload: AccountInput): AccountRecord {
-  if (!payload.id?.trim()) throw new Error("Account id is required");
+function generateAccountId(): string {
+  return `rt-${Math.floor(100000000 + Math.random() * 900000000)}`;
+}
+
+function sanitizeAccountInput(payload: AccountInput, fallbackApiKey: string): AccountRecord {
+  const resolvedId = payload.id?.trim() || generateAccountId();
   if (!payload.baseUrl?.trim()) throw new Error("Account baseUrl is required");
-  if (!payload.apiKey?.trim()) throw new Error("Account apiKey is required");
+  const resolvedApiKey = payload.apiKey?.trim() || fallbackApiKey.trim();
+  if (!resolvedApiKey) throw new Error("Account apiKey is required");
   return {
-    id: payload.id.trim(),
-    label: payload.label?.trim() || payload.id.trim(),
+    id: resolvedId,
+    label: payload.label?.trim() || resolvedId,
     baseUrl: normalizeBaseUrl(payload.baseUrl),
-    apiKey: payload.apiKey.trim(),
+    apiKey: resolvedApiKey,
     enabled: payload.enabled !== false,
     extraHeaders: payload.extraHeaders,
     unhealthyUntil: 0,
@@ -271,14 +276,14 @@ function renderAdminPage(): string {
     <div class="top">
       <section class="card">
         <h2 style="margin:0 0 8px;font-size:16px">添加 / 编辑账号</h2>
-        <p class="muted" style="margin:0 0 14px">填同一个账号 ID 会覆盖更新。这里只维护上游账号池。</p>
+        <p class="muted" style="margin:0 0 14px">账号 ID 和 API Key 都可留空。留空时会自动生成 ID，并默认复用当前站点验证密码。</p>
         <div class="grid two">
-          <input id="id" placeholder="账号 ID，例如 openai-1" />
+          <input id="id" placeholder="账号 ID（可留空，默认 rt-123456789）" />
           <input id="label" placeholder="显示名称，可留空" />
         </div>
         <div class="grid two" style="margin-top:10px">
           <input id="baseUrl" placeholder="上游 Base URL，例如 https://api.openai.com" />
-          <input id="apiKey" placeholder="上游 API Key" />
+          <input id="apiKey" placeholder="上游 API Key（可留空，默认复用当前密码）" />
         </div>
         <div class="grid" style="margin-top:10px">
           <textarea id="extraHeaders" placeholder='可选额外请求头 JSON，例如 {"OpenAI-Organization":"org_xxx"}'></textarea>
@@ -831,7 +836,7 @@ export class RouterState extends DurableObject<Env> {
     }
 
     if (pathname === "/admin/accounts" && request.method === "POST") {
-      const payload = sanitizeAccountInput(await readJsonBody<AccountInput>(request));
+      const payload = sanitizeAccountInput(await readJsonBody<AccountInput>(request), this.env.AUTH_TOKEN);
       const accounts = await this.getAccounts();
       const next = accounts.filter((item) => item.id !== payload.id);
       next.push(payload);
