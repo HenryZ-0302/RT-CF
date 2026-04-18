@@ -54,12 +54,20 @@ function getBearer(request: Request): string {
   return match?.[1] ?? "";
 }
 
+function normalizeToken(raw: string | null | undefined): string {
+  const value = (raw ?? "").trim();
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    return value.slice(1, -1).trim();
+  }
+  return value;
+}
+
 function normalizeBaseUrl(raw: string): string {
   return raw.trim().replace(/\/+$/, "");
 }
 
 function ensureAuthorized(request: Request, token: string): Response | null {
-  if (!token || getBearer(request) !== token) {
+  if (!normalizeToken(token) || normalizeToken(getBearer(request)) !== normalizeToken(token)) {
     return json({ error: "Unauthorized" }, { status: 401 });
   }
   return null;
@@ -286,6 +294,7 @@ function renderAdminPage(): string {
       try {
         setStatus(gateStatusEl, "验证中...");
         const data = await api("/admin/verify");
+        localStorage.setItem("rt-router-token", getToken());
         setSummary(data.summary || {});
         unlockApp();
         setStatus(gateStatusEl, "");
@@ -407,7 +416,6 @@ function renderAdminPage(): string {
     window.editAccount = editAccount;
     window.removeAccount = removeAccount;
     document.getElementById("gate-submit").addEventListener("click", () => {
-      localStorage.setItem("rt-router-token", getToken());
       verify();
     });
     document.getElementById("add-account").addEventListener("click", addAccount);
