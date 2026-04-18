@@ -318,6 +318,8 @@ function renderAdminPage(): string {
           全选账号
         </label>
         <div class="actions" style="margin-top:0">
+          <button class="secondary" id="export-accounts">导出</button>
+          <button class="secondary" id="import-accounts">导入</button>
           <button class="secondary" id="batch-enable">批量启用</button>
           <button class="secondary" id="batch-disable">批量停用</button>
           <button class="secondary" id="batch-test">全部检测</button>
@@ -571,6 +573,47 @@ function renderAdminPage(): string {
         setStatus(statusEl, error.message, true);
       }
     }
+    function downloadJson(filename, data) {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+    async function exportAccounts() {
+      try {
+        const data = await api("/admin/accounts/export");
+        downloadJson("rt-account-router-accounts.json", data);
+        setStatus(statusEl, "账号已导出。");
+      } catch (error) {
+        setStatus(statusEl, error.message, true);
+      }
+    }
+    async function importAccounts() {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "application/json";
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const payload = JSON.parse(text);
+          const data = await api("/admin/accounts/import", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          setStatus(statusEl, `导入完成：${data.imported || 0} 个账号。`);
+          await loadAccounts();
+        } catch (error) {
+          setStatus(statusEl, error.message, true);
+        }
+      };
+      input.click();
+    }
     window.toggleAccount = toggleAccount;
     window.testAccount = testAccount;
     window.editAccount = editAccount;
@@ -579,6 +622,8 @@ function renderAdminPage(): string {
     document.getElementById("add-account").addEventListener("click", addAccount);
     document.getElementById("reload").addEventListener("click", loadAccounts);
     document.getElementById("clear-form").addEventListener("click", clearForm);
+    document.getElementById("export-accounts").addEventListener("click", exportAccounts);
+    document.getElementById("import-accounts").addEventListener("click", importAccounts);
     document.getElementById("batch-enable").addEventListener("click", () => batchToggle(true));
     document.getElementById("batch-disable").addEventListener("click", () => batchToggle(false));
     document.getElementById("batch-test").addEventListener("click", testAll);
@@ -843,6 +888,40 @@ export class RouterState extends DurableObject<Env> {
       await this.saveAccounts(next);
       const statsMap = await this.getStatsMap();
       return json({ ok: true, account: toPublicAccount(payload, statsMap[payload.id] ?? createEmptyStat()) }, { status: 201 });
+    }
+
+    if (pathname === "/admin/accounts/export" && request.method === "GET") {
+      const accounts = await this.getAccounts();
+      return json({
+        exportedAt: Date.now(),
+        accounts: accounts.map((account) => ({
+          id: account.id,
+          label: account.label,
+          baseUrl: account.baseUrl,
+          apiKey: account.apiKey,
+          enabled: account.enabled,
+          extraHeaders: account.extraHeaders ?? {},
+        })),
+      });
+    }
+
+    if (pathname === "/admin/accounts/import" && request.method === "POST") {
+      const payload = await readJsonBody<{ accounts?: AccountInput[] }>(request);
+      const incoming = Array.isArray(payload.accounts) ? payload.accounts : [];
+      const accounts = await this.getAccounts();
+      const next = [...accounts];
+      let imported = 0;
+
+      for (const item of incoming) {
+        const normalized = sanitizeAccountInput(item, this.env.AUTH_TOKEN);
+        const index = next.findIndex((existing) => existing.id === normalized.id);
+        if (index >= 0) next[index] = normalized;
+        else next.push(normalized);
+        imported += 1;
+      }
+
+      await this.saveAccounts(next);
+      return json({ ok: true, imported });
     }
 
     if (pathname === "/admin/accounts/batch" && request.method === "PATCH") {
