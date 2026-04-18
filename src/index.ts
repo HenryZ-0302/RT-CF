@@ -1,3 +1,5 @@
+import { DurableObject } from "cloudflare:workers";
+
 export interface Env {
   AUTH_TOKEN: string;
   ACCOUNT_COOLDOWN_MS?: string;
