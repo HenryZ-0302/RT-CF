@@ -297,9 +297,10 @@ function renderAdminPage(): string {
 
       <section class="card">
         <h2 style="margin:0 0 8px;font-size:16px">当前状态</h2>
-        <p class="muted" style="margin:0 0 14px">当前已通过验证的访问密码，只用于当前浏览器会话。</p>
+        <p class="muted" style="margin:0 0 14px">当前已通过验证的访问密码只用于浏览器会话。API 检测会使用下面的测试模型。</p>
         <div class="field">
           <input id="current-token" type="password" disabled />
+          <input id="api-test-model" placeholder="API 检测模型，默认 gpt-4.1-mini" />
         </div>
         <div class="status" id="meta-status"></div>
       </section>
@@ -322,7 +323,6 @@ function renderAdminPage(): string {
           <button class="secondary" id="import-accounts">导入</button>
           <button class="secondary" id="batch-enable">批量启用</button>
           <button class="secondary" id="batch-disable">批量停用</button>
-          <button class="secondary" id="batch-test">全部检测</button>
         </div>
       </div>
       <div id="accounts" class="dashboard"></div>
@@ -337,16 +337,21 @@ function renderAdminPage(): string {
     const listEl = document.getElementById("accounts");
     const tokenInput = document.getElementById("token");
     const currentTokenInput = document.getElementById("current-token");
+    const apiTestModelInput = document.getElementById("api-test-model");
     const selectedIds = new Set();
     let currentAccounts = [];
     tokenInput.value = localStorage.getItem("rt-router-token") || "";
     currentTokenInput.value = tokenInput.value;
+    apiTestModelInput.value = localStorage.getItem("rt-router-api-test-model") || "gpt-4.1-mini";
     function setStatus(target, message, isError = false) {
       target.textContent = message || "";
       target.style.color = isError ? "#ff8f8f" : "#8b96b2";
     }
     function getToken() {
       return tokenInput.value.trim();
+    }
+    function getApiTestModel() {
+      return (apiTestModelInput.value || "").trim() || "gpt-4.1-mini";
     }
     function parseExtraHeaders() {
       const raw = document.getElementById("extraHeaders").value.trim();
@@ -389,6 +394,7 @@ function renderAdminPage(): string {
         setStatus(gateStatusEl, "");
         setStatus(metaStatusEl, "验证通过。");
         await loadAccounts();
+        await probeAllAccounts();
       } catch (error) {
         setStatus(gateStatusEl, error.message, true);
       }
@@ -426,7 +432,7 @@ function renderAdminPage(): string {
               </div>
               <div class="actions" style="margin-top:0">
                 <button class="secondary" onclick="editAccount('\${account.id}')">编辑</button>
-                <button class="secondary" onclick="testAccount('\${account.id}')">检测</button>
+                <button class="secondary" onclick="testAccount('\${account.id}')">API 检测</button>
                 <button class="secondary" onclick="toggleAccount('\${account.id}', \${!account.enabled})">\${account.enabled ? "停用" : "启用"}</button>
                 <button class="danger" onclick="removeAccount('\${account.id}')">删除</button>
               </div>
@@ -513,9 +519,13 @@ function renderAdminPage(): string {
     }
     async function testAccount(id) {
       try {
-        setStatus(statusEl, "正在检测账号...");
-        const data = await api("/admin/accounts/" + encodeURIComponent(id) + "/test", { method: "POST" });
-        setStatus(statusEl, "检测成功：" + (data.message || "可用"));
+        setStatus(statusEl, "正在做 API 检测...");
+        const data = await api("/admin/accounts/" + encodeURIComponent(id) + "/test", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mode: "chat", model: getApiTestModel() }),
+        });
+        setStatus(statusEl, "API 检测成功：" + (data.message || "可用"));
         await loadAccounts();
       } catch (error) {
         setStatus(statusEl, error.message, true);
@@ -563,14 +573,14 @@ function renderAdminPage(): string {
         setStatus(statusEl, error.message, true);
       }
     }
-    async function testAll() {
+    async function probeAllAccounts() {
       try {
-        setStatus(statusEl, "正在批量检测...");
+        setStatus(metaStatusEl, "正在自动检测账号存活...");
         const data = await api("/admin/accounts/test-all", { method: "POST" });
-        setStatus(statusEl, "批量检测完成：" + (data.okCount || 0) + "/" + (data.total || 0) + " 成功。");
+        setStatus(metaStatusEl, "自动检测完成：" + (data.okCount || 0) + "/" + (data.total || 0) + " 可用。");
         await loadAccounts();
       } catch (error) {
-        setStatus(statusEl, error.message, true);
+        setStatus(metaStatusEl, error.message, true);
       }
     }
     function downloadJson(filename, data) {
@@ -626,7 +636,9 @@ function renderAdminPage(): string {
     document.getElementById("import-accounts").addEventListener("click", importAccounts);
     document.getElementById("batch-enable").addEventListener("click", () => batchToggle(true));
     document.getElementById("batch-disable").addEventListener("click", () => batchToggle(false));
-    document.getElementById("batch-test").addEventListener("click", testAll);
+    apiTestModelInput.addEventListener("change", () => {
+      localStorage.setItem("rt-router-api-test-model", getApiTestModel());
+    });
     document.getElementById("select-all").addEventListener("change", (event) => {
       const checked = event.target.checked;
       currentAccounts.forEach((account) => {
@@ -775,6 +787,35 @@ export class RouterState extends DurableObject<Env> {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await this.markUnhealthy(account.id);
+      await this.recordProxyResult(account.id, 502, 0, message);
+      return { ok: false, message };
+    }
+  }
+
+  private async apiTestAccount(account: AccountRecord, model: string): Promise<{ ok: boolean; status?: number; message: string }> {
+    try {
+      const response = await fetch(`${account.baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${account.apiKey}`,
+          ...(account.extraHeaders ?? {}),
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: "Reply with exactly: OK" }],
+          max_tokens: 8,
+        }),
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        await this.recordProxyResult(account.id, response.status, 0, text || `HTTP ${response.status}`);
+        return { ok: false, status: response.status, message: text || `HTTP ${response.status}` };
+      }
+      await this.recordProxyResult(account.id, response.status, 0);
+      return { ok: true, status: response.status, message: `模型 ${model} 可用` };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       await this.recordProxyResult(account.id, 502, 0, message);
       return { ok: false, message };
     }
@@ -962,7 +1003,10 @@ export class RouterState extends DurableObject<Env> {
     }
 
     if (request.method === "POST" && testMatch) {
-      const result = await this.probeAccount(target);
+      const payload = await readJsonBody<{ mode?: "health" | "chat"; model?: string }>(request);
+      const result = payload.mode === "chat"
+        ? await this.apiTestAccount(target, payload.model?.trim() || "gpt-4.1-mini")
+        : await this.probeAccount(target);
       return json(result, { status: result.ok ? 200 : 502 });
     }
 
