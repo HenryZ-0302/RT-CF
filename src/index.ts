@@ -606,7 +606,7 @@ function renderAdminPage(): string {
             headers: { "content-type": "application/json" },
             body: JSON.stringify(payload),
           });
-          setStatus(statusEl, `导入完成：${data.imported || 0} 个账号。`);
+          setStatus(statusEl, "导入完成：" + (data.imported || 0) + " 个账号。");
           await loadAccounts();
         } catch (error) {
           setStatus(statusEl, error.message, true);
