@@ -20,9 +20,10 @@ After deploy, open:
 
 The page lets you:
 
-- save `AUTH_TOKEN` locally in the browser
+- verify `AUTH_TOKEN` before entering the console
 - add/update accounts
 - enable/disable accounts
+- test a single account
 - delete accounts
 - inspect current router state
 
