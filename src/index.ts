@@ -300,10 +300,11 @@ function renderAdminPage(): string {
     button.danger { background: var(--danger); }
     .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
     .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
-    .top { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 16px; margin-bottom: 16px; }
+    .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+    .side-rail { display: grid; gap: 16px; position: sticky; top: 18px; }
     .card { padding: 20px; animation: panelIn var(--motion-slow) ease-out both; }
-    .top .card:nth-child(1) { animation-delay: 80ms; }
-    .top .card:nth-child(2) { animation-delay: 140ms; }
+    .side-rail .card:nth-child(1) { animation-delay: 80ms; }
+    .side-rail .card:nth-child(2) { animation-delay: 140ms; }
     .status { min-height: 18px; font-size: 13px; color: var(--muted); margin-top: 10px; transition: color var(--motion-fast) ease, opacity var(--motion-fast) ease; }
     .status.flash { animation: statusFlash 620ms ease-out; }
     .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
@@ -330,6 +331,7 @@ function renderAdminPage(): string {
     .stat b, .mini b { display: block; font-size: 20px; margin-bottom: 4px; transition: transform var(--motion-fast) ease, color var(--motion-fast) ease; }
     .value-pop { animation: valuePop 360ms ease-out; color: #ffffff; }
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 18px 0 14px; }
+    .toolbar-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: 13px; margin-bottom: 12px; }
     .check { width: 16px; height: 16px; accent-color: var(--accent); transition: transform var(--motion-fast) ease; }
     .check:checked { transform: scale(1.08); }
     .fleet-board { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 16px; margin-bottom: 16px; }
@@ -371,6 +373,18 @@ function renderAdminPage(): string {
     .node-url { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .inline-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; min-width: 260px; }
     .inline-actions button { padding: 7px 9px; font-size: 12px; }
+    .endpoint-box {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(8, 13, 28, 0.52);
+    }
+    .endpoint-box .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
     .meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
     .tag {
@@ -428,8 +442,9 @@ function renderAdminPage(): string {
       }
     }
     @media (max-width: 1100px) { .stats { grid-template-columns: repeat(4, 1fr); } }
-    @media (max-width: 860px) { .top, .grid.two, .fleet-board, .stats, .filters { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 560px) { .top, .grid.two, .fleet-board, .stats, .filters { grid-template-columns: 1fr; } }
+    @media (max-width: 1040px) { .workspace { grid-template-columns: 1fr; } .side-rail { position: static; grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 860px) { .grid.two, .fleet-board, .stats, .filters, .side-rail { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 560px) { .grid.two, .fleet-board, .stats, .filters, .side-rail { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -471,88 +486,97 @@ function renderAdminPage(): string {
       <div class="stat"><b id="sum-health-checks">0</b><span class="muted">健康检测</span></div>
     </section>
 
-    <div class="top">
+    <div class="workspace">
       <section class="card">
-        <h2 style="margin:0 0 8px;font-size:16px">添加 / 编辑账号</h2>
-        <p class="muted" style="margin:0 0 14px">账号 ID 和 API Key 都可留空。留空时会自动生成 ID，并默认复用当前站点验证密码。</p>
-        <div class="grid two">
-          <input id="id" placeholder="账号 ID（可留空，默认 rt-123456789）" />
-          <input id="label" placeholder="显示名称，可留空" />
+        <div class="row">
+          <div>
+            <h2 style="margin:0 0 8px;font-size:16px">账号池</h2>
+            <p class="muted" style="margin:0">真实调用统计和健康检测状态已分开，账号多时先看筛选后的主表。</p>
+          </div>
         </div>
-        <div class="grid two" style="margin-top:10px">
-          <input id="baseUrl" placeholder="上游 Base URL，例如 https://api.openai.com" />
-          <input id="apiKey" placeholder="上游 API Key（可留空，默认复用当前密码）" />
+        <div class="fleet-board">
+          <div class="mini">
+            <b id="fleet-health-title">0 / 0</b>
+            <span class="muted">可用账号 / 总账号</span>
+            <div class="bar"><i id="fleet-health-bar" style="width:0%"></i></div>
+          </div>
+          <div class="mini">
+            <b>调用分布</b>
+            <div id="traffic-rank" class="rank-list" style="margin-top:10px"></div>
+          </div>
         </div>
-        <div class="grid" style="margin-top:10px">
-          <textarea id="extraHeaders" placeholder='可选额外请求头 JSON，例如 {"OpenAI-Organization":"org_xxx"}'></textarea>
+        <div class="toolbar-meta">
+          <span id="visible-count">显示 0 / 0 个账号</span>
+          <span id="selected-count">已选 0 个</span>
+          <span>检测不会计入真实 API 请求</span>
         </div>
-        <div class="actions">
-          <button id="add-account">添加 / 覆盖账号</button>
-          <button class="secondary" id="clear-form">清空表单</button>
+        <div class="toolbar">
+          <div class="filters">
+            <input id="account-search" placeholder="搜索账号、ID 或 Base URL" />
+            <select id="status-filter">
+              <option value="all">全部状态</option>
+              <option value="available">可参与轮询</option>
+              <option value="attention">需处理</option>
+              <option value="disabled">已停用</option>
+            </select>
+            <select id="sort-mode">
+              <option value="attention">需处理优先</option>
+              <option value="calls">请求数最多</option>
+              <option value="recent">最近使用</option>
+              <option value="label">名称排序</option>
+            </select>
+          </div>
+          <div class="actions" style="margin-top:0">
+            <label class="muted" style="display:flex;align-items:center;gap:8px">
+              <input id="select-all" class="check" type="checkbox" />
+              当前筛选全选
+            </label>
+            <button class="secondary" id="test-all">全部检测</button>
+            <button class="secondary" id="batch-enable">批量启用</button>
+            <button class="secondary" id="batch-disable">批量停用</button>
+          </div>
         </div>
-        <div class="status" id="status"></div>
+        <div id="accounts"></div>
       </section>
 
-      <section class="card">
-        <h2 style="margin:0 0 8px;font-size:16px">当前状态</h2>
-        <p class="muted" style="margin:0 0 14px">检测只更新账号可用性，不再计入真实 API 请求数。API 检测会使用下面的测试模型。</p>
-        <div class="field">
-          <input id="current-token" type="password" disabled />
-          <input id="api-test-model" placeholder="API 检测模型，默认 gpt-4.1-mini" />
-        </div>
-        <div class="status" id="meta-status"></div>
-      </section>
+      <aside class="side-rail">
+        <section class="card">
+          <h2 style="margin:0 0 8px;font-size:16px">添加 / 编辑账号</h2>
+          <p class="muted" style="margin:0 0 14px">编辑账号会载入到这里，保存后回到账号池查看状态。</p>
+          <div class="grid">
+            <input id="id" placeholder="账号 ID（可留空）" />
+            <input id="label" placeholder="显示名称，可留空" />
+            <input id="baseUrl" placeholder="上游 Base URL" />
+            <input id="apiKey" placeholder="上游 API Key（可留空）" />
+            <textarea id="extraHeaders" placeholder='可选额外请求头 JSON，例如 {"OpenAI-Organization":"org_xxx"}'></textarea>
+          </div>
+          <div class="actions">
+            <button id="add-account">保存账号</button>
+            <button class="secondary" id="clear-form">清空</button>
+          </div>
+          <div class="status" id="status"></div>
+        </section>
+
+        <section class="card">
+          <h2 style="margin:0 0 8px;font-size:16px">控制台</h2>
+          <p class="muted" style="margin:0 0 14px">这里放低频操作和当前服务入口，避免挤在账号主表里。</p>
+          <div class="field">
+            <input id="current-token" type="password" disabled />
+            <input id="api-test-model" placeholder="API 检测模型，默认 gpt-4.1-mini" />
+          </div>
+          <div class="endpoint-box">
+            <span class="mono muted" id="proxy-endpoint">/v1</span>
+            <button class="secondary" id="copy-endpoint">复制端点</button>
+          </div>
+          <div class="actions">
+            <button class="secondary" id="export-accounts">导出</button>
+            <button class="secondary" id="import-accounts">导入</button>
+            <button class="danger" id="reset-stats">清空统计</button>
+          </div>
+          <div class="status" id="meta-status"></div>
+        </section>
+      </aside>
     </div>
-
-    <section class="card">
-      <div class="row">
-        <div>
-          <h2 style="margin:0 0 8px;font-size:16px">账号仪表盘</h2>
-          <p class="muted" style="margin:0">真实调用统计和健康检测状态已分开，账号多时优先看这里。</p>
-        </div>
-      </div>
-      <div class="fleet-board">
-        <div class="mini">
-          <b id="fleet-health-title">0 / 0</b>
-          <span class="muted">可用账号 / 总账号</span>
-          <div class="bar"><i id="fleet-health-bar" style="width:0%"></i></div>
-        </div>
-        <div class="mini">
-          <b>调用分布</b>
-          <div id="traffic-rank" class="rank-list" style="margin-top:10px"></div>
-        </div>
-      </div>
-      <div class="toolbar">
-        <div class="filters">
-          <input id="account-search" placeholder="搜索账号、ID 或 Base URL" />
-          <select id="status-filter">
-            <option value="all">全部状态</option>
-            <option value="available">可参与轮询</option>
-            <option value="attention">需处理</option>
-            <option value="disabled">已停用</option>
-          </select>
-          <select id="sort-mode">
-            <option value="attention">需处理优先</option>
-            <option value="calls">请求数最多</option>
-            <option value="recent">最近使用</option>
-            <option value="label">名称排序</option>
-          </select>
-        </div>
-        <div class="actions" style="margin-top:0">
-          <label class="muted" style="display:flex;align-items:center;gap:8px">
-            <input id="select-all" class="check" type="checkbox" />
-            全选
-          </label>
-          <button class="secondary" id="test-all">全部检测</button>
-          <button class="secondary" id="export-accounts">导出</button>
-          <button class="secondary" id="import-accounts">导入</button>
-          <button class="secondary" id="batch-enable">批量启用</button>
-          <button class="secondary" id="batch-disable">批量停用</button>
-          <button class="danger" id="reset-stats">清空统计</button>
-        </div>
-      </div>
-      <div id="accounts"></div>
-    </section>
   </main>
   <script>
     const gateEl = document.getElementById("gate");
@@ -567,11 +591,14 @@ function renderAdminPage(): string {
     const searchInput = document.getElementById("account-search");
     const statusFilterInput = document.getElementById("status-filter");
     const sortModeInput = document.getElementById("sort-mode");
+    const proxyEndpointEl = document.getElementById("proxy-endpoint");
     const selectedIds = new Set();
     let currentAccounts = [];
+    let visibleAccountIds = [];
     tokenInput.value = localStorage.getItem("rt-router-token") || "";
     currentTokenInput.value = tokenInput.value;
     apiTestModelInput.value = localStorage.getItem("rt-router-api-test-model") || "gpt-4.1-mini";
+    proxyEndpointEl.textContent = window.location.origin + "/v1";
     function setStatus(target, message, isError = false) {
       target.textContent = message || "";
       target.style.color = isError ? "#ff8f8f" : "#8b96b2";
@@ -673,9 +700,8 @@ function renderAdminPage(): string {
         setSummary(data.summary || {});
         unlockApp();
         setStatus(gateStatusEl, "");
-        setStatus(metaStatusEl, "验证通过。");
+        setStatus(metaStatusEl, "验证通过。需要确认可用性时可手动点击全部检测。");
         await loadAccounts();
-        await probeAllAccounts();
       } catch (error) {
         setStatus(gateStatusEl, error.message, true);
       }
@@ -689,7 +715,8 @@ function renderAdminPage(): string {
     }
     function syncSelectAll() {
       const selectAll = document.getElementById("select-all");
-      selectAll.checked = currentAccounts.length > 0 && currentAccounts.every((account) => selectedIds.has(account.id));
+      selectAll.checked = visibleAccountIds.length > 0 && visibleAccountIds.every((id) => selectedIds.has(id));
+      document.getElementById("selected-count").textContent = "已选 " + selectedIds.size + " 个";
     }
     function renderAccounts(accounts) {
       currentAccounts = accounts;
@@ -722,6 +749,8 @@ function renderAdminPage(): string {
         const score = (account) => accountState(account) === "attention" ? 0 : accountState(account) === "available" ? 1 : 2;
         return score(a) - score(b);
       });
+      visibleAccountIds = visible.map((account) => account.id);
+      document.getElementById("visible-count").textContent = "显示 " + visible.length + " / " + accounts.length + " 个账号";
       if (!accounts.length) {
         listEl.innerHTML = '<div class="list-empty">暂无账号。</div>';
         syncSelectAll();
@@ -775,6 +804,15 @@ function renderAdminPage(): string {
         setStatus(statusEl, error.message, true);
       } finally {
         setBusy("reload", false);
+      }
+    }
+    async function copyEndpoint() {
+      const endpoint = window.location.origin + "/v1";
+      try {
+        await navigator.clipboard.writeText(endpoint);
+        setStatus(metaStatusEl, "代理端点已复制：" + endpoint);
+      } catch {
+        setStatus(metaStatusEl, "复制失败，请手动复制：" + endpoint, true);
       }
     }
     async function addAccount() {
@@ -940,10 +978,14 @@ function renderAdminPage(): string {
     window.editAccount = editAccount;
     window.removeAccount = removeAccount;
     document.getElementById("gate-submit").addEventListener("click", verify);
+    tokenInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") verify();
+    });
     document.getElementById("add-account").addEventListener("click", addAccount);
     document.getElementById("reload").addEventListener("click", loadAccounts);
     document.getElementById("clear-form").addEventListener("click", clearForm);
     document.getElementById("test-all").addEventListener("click", probeAllAccounts);
+    document.getElementById("copy-endpoint").addEventListener("click", copyEndpoint);
     document.getElementById("export-accounts").addEventListener("click", exportAccounts);
     document.getElementById("import-accounts").addEventListener("click", importAccounts);
     document.getElementById("batch-enable").addEventListener("click", () => batchToggle(true));
@@ -957,9 +999,9 @@ function renderAdminPage(): string {
     sortModeInput.addEventListener("change", () => renderAccounts(currentAccounts));
     document.getElementById("select-all").addEventListener("change", (event) => {
       const checked = event.target.checked;
-      currentAccounts.forEach((account) => {
-        if (checked) selectedIds.add(account.id);
-        else selectedIds.delete(account.id);
+      visibleAccountIds.forEach((id) => {
+        if (checked) selectedIds.add(id);
+        else selectedIds.delete(id);
       });
       renderAccounts(currentAccounts);
     });
