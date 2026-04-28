@@ -3,6 +3,7 @@ import { DurableObject } from "cloudflare:workers";
 export interface Env {
   AUTH_TOKEN: string;
   ACCOUNT_COOLDOWN_MS?: string;
+  MAX_RETRY_ACCOUNTS?: string;
   ROUTER_STATE: DurableObjectNamespace;
 }
 
@@ -12,6 +13,7 @@ type AccountRecord = {
   baseUrl: string;
   apiKey: string;
   enabled: boolean;
+  weight?: number;
   extraHeaders?: Record<string, string>;
   unhealthyUntil?: number;
 };
@@ -22,6 +24,7 @@ type AccountInput = {
   baseUrl: string;
   apiKey?: string;
   enabled?: boolean;
+  weight?: number;
   extraHeaders?: Record<string, string>;
 };
 
@@ -51,16 +54,41 @@ type PublicAccount = {
   label: string;
   baseUrl: string;
   enabled: boolean;
+  weight: number;
   extraHeaders: Record<string, string>;
   unhealthyUntil: number;
   stats: AccountStat;
   health: AccountHealth;
 };
 
+type RoutingSettings = {
+  maxRetryAccounts: number;
+  disableOnFailure: boolean;
+};
+
 const ACCOUNTS_KEY = "accounts";
 const CURSOR_KEY = "cursor";
 const STATS_KEY = "stats";
 const HEALTH_KEY = "health";
+const ROUTING_KEY = "routing";
+
+function normalizeWeight(value: unknown): number {
+  const weight = Number(value ?? 1);
+  if (!Number.isFinite(weight)) return 1;
+  return Math.max(1, Math.min(20, Math.round(weight)));
+}
+
+function createDefaultRouting(maxRetryAccounts?: string): RoutingSettings {
+  const parsed = Number(maxRetryAccounts || 3);
+  return {
+    maxRetryAccounts: Number.isFinite(parsed) ? Math.max(1, Math.min(20, Math.round(parsed))) : 3,
+    disableOnFailure: true,
+  };
+}
+
+function isAccountFailureStatus(status: number): boolean {
+  return status === 401 || status === 403 || status === 429 || status >= 500;
+}
 
 function json(data: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(data), {
@@ -139,6 +167,7 @@ function sanitizeAccountInput(payload: AccountInput, fallbackApiKey: string): Ac
     baseUrl: normalizeBaseUrl(payload.baseUrl),
     apiKey: resolvedApiKey,
     enabled: payload.enabled !== false,
+    weight: normalizeWeight(payload.weight),
     extraHeaders: payload.extraHeaders,
     unhealthyUntil: 0,
   };
@@ -150,6 +179,7 @@ function toPublicAccount(account: AccountRecord, stats: AccountStat, health: Acc
     label: account.label,
     baseUrl: account.baseUrl,
     enabled: account.enabled,
+    weight: normalizeWeight(account.weight),
     extraHeaders: account.extraHeaders ?? {},
     unhealthyUntil: account.unhealthyUntil ?? 0,
     stats,
@@ -300,11 +330,10 @@ function renderAdminPage(): string {
     button.danger { background: var(--danger); }
     .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
     .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
-    .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
-    .side-rail { display: grid; gap: 16px; position: sticky; top: 18px; }
+    .top { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 16px; margin-bottom: 16px; }
     .card { padding: 20px; animation: panelIn var(--motion-slow) ease-out both; }
-    .side-rail .card:nth-child(1) { animation-delay: 80ms; }
-    .side-rail .card:nth-child(2) { animation-delay: 140ms; }
+    .top .card:nth-child(1) { animation-delay: 80ms; }
+    .top .card:nth-child(2) { animation-delay: 140ms; }
     .status { min-height: 18px; font-size: 13px; color: var(--muted); margin-top: 10px; transition: color var(--motion-fast) ease, opacity var(--motion-fast) ease; }
     .status.flash { animation: statusFlash 620ms ease-out; }
     .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
@@ -442,9 +471,8 @@ function renderAdminPage(): string {
       }
     }
     @media (max-width: 1100px) { .stats { grid-template-columns: repeat(4, 1fr); } }
-    @media (max-width: 1040px) { .workspace { grid-template-columns: 1fr; } .side-rail { position: static; grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 860px) { .grid.two, .fleet-board, .stats, .filters, .side-rail { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 560px) { .grid.two, .fleet-board, .stats, .filters, .side-rail { grid-template-columns: 1fr; } }
+    @media (max-width: 860px) { .top, .grid.two, .fleet-board, .stats, .filters { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 560px) { .top, .grid.two, .fleet-board, .stats, .filters { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -486,97 +514,108 @@ function renderAdminPage(): string {
       <div class="stat"><b id="sum-health-checks">0</b><span class="muted">健康检测</span></div>
     </section>
 
-    <div class="workspace">
+    <div class="top">
       <section class="card">
-        <div class="row">
-          <div>
-            <h2 style="margin:0 0 8px;font-size:16px">账号池</h2>
-            <p class="muted" style="margin:0">真实调用统计和健康检测状态已分开，账号多时先看筛选后的主表。</p>
-          </div>
+        <h2 style="margin:0 0 8px;font-size:16px">添加 / 编辑账号</h2>
+        <p class="muted" style="margin:0 0 14px">账号权重越高，被轮询到的比例越高。编辑账号会载入到这里，保存后回到账号池查看状态。</p>
+        <div class="grid two">
+          <input id="id" placeholder="账号 ID（可留空）" />
+          <input id="label" placeholder="显示名称，可留空" />
         </div>
-        <div class="fleet-board">
-          <div class="mini">
-            <b id="fleet-health-title">0 / 0</b>
-            <span class="muted">可用账号 / 总账号</span>
-            <div class="bar"><i id="fleet-health-bar" style="width:0%"></i></div>
-          </div>
-          <div class="mini">
-            <b>调用分布</b>
-            <div id="traffic-rank" class="rank-list" style="margin-top:10px"></div>
-          </div>
+        <div class="grid two" style="margin-top:10px">
+          <input id="baseUrl" placeholder="上游 Base URL" />
+          <input id="apiKey" placeholder="上游 API Key（可留空）" />
         </div>
-        <div class="toolbar-meta">
-          <span id="visible-count">显示 0 / 0 个账号</span>
-          <span id="selected-count">已选 0 个</span>
-          <span>检测不会计入真实 API 请求</span>
+        <div class="grid two" style="margin-top:10px">
+          <input id="weight" type="number" min="1" max="20" step="1" placeholder="权重 1-20，默认 1" />
+          <input id="max-retry-accounts" type="number" min="1" max="20" step="1" placeholder="失败重试账号数，默认 3" />
         </div>
-        <div class="toolbar">
-          <div class="filters">
-            <input id="account-search" placeholder="搜索账号、ID 或 Base URL" />
-            <select id="status-filter">
-              <option value="all">全部状态</option>
-              <option value="available">可参与轮询</option>
-              <option value="attention">需处理</option>
-              <option value="disabled">已停用</option>
-            </select>
-            <select id="sort-mode">
-              <option value="attention">需处理优先</option>
-              <option value="calls">请求数最多</option>
-              <option value="recent">最近使用</option>
-              <option value="label">名称排序</option>
-            </select>
-          </div>
-          <div class="actions" style="margin-top:0">
-            <label class="muted" style="display:flex;align-items:center;gap:8px">
-              <input id="select-all" class="check" type="checkbox" />
-              当前筛选全选
-            </label>
-            <button class="secondary" id="test-all">全部检测</button>
-            <button class="secondary" id="batch-enable">批量启用</button>
-            <button class="secondary" id="batch-disable">批量停用</button>
-          </div>
+        <div class="grid" style="margin-top:10px">
+          <textarea id="extraHeaders" placeholder='可选额外请求头 JSON，例如 {"OpenAI-Organization":"org_xxx"}'></textarea>
         </div>
-        <div id="accounts"></div>
+        <div class="actions">
+          <button id="add-account">保存账号</button>
+          <button class="secondary" id="clear-form">清空</button>
+          <button class="secondary" id="save-routing">保存路由策略</button>
+        </div>
+        <label class="muted" style="display:flex;align-items:center;gap:8px;margin-top:12px">
+          <input id="disable-on-failure" class="check" type="checkbox" />
+          真实代理失败后自动停用该账号
+        </label>
+        <div class="status" id="status"></div>
       </section>
 
-      <aside class="side-rail">
-        <section class="card">
-          <h2 style="margin:0 0 8px;font-size:16px">添加 / 编辑账号</h2>
-          <p class="muted" style="margin:0 0 14px">编辑账号会载入到这里，保存后回到账号池查看状态。</p>
-          <div class="grid">
-            <input id="id" placeholder="账号 ID（可留空）" />
-            <input id="label" placeholder="显示名称，可留空" />
-            <input id="baseUrl" placeholder="上游 Base URL" />
-            <input id="apiKey" placeholder="上游 API Key（可留空）" />
-            <textarea id="extraHeaders" placeholder='可选额外请求头 JSON，例如 {"OpenAI-Organization":"org_xxx"}'></textarea>
-          </div>
-          <div class="actions">
-            <button id="add-account">保存账号</button>
-            <button class="secondary" id="clear-form">清空</button>
-          </div>
-          <div class="status" id="status"></div>
-        </section>
-
-        <section class="card">
-          <h2 style="margin:0 0 8px;font-size:16px">控制台</h2>
-          <p class="muted" style="margin:0 0 14px">这里放低频操作和当前服务入口，避免挤在账号主表里。</p>
-          <div class="field">
-            <input id="current-token" type="password" disabled />
-            <input id="api-test-model" placeholder="API 检测模型，默认 gpt-4.1-mini" />
-          </div>
-          <div class="endpoint-box">
-            <span class="mono muted" id="proxy-endpoint">/v1</span>
-            <button class="secondary" id="copy-endpoint">复制端点</button>
-          </div>
-          <div class="actions">
-            <button class="secondary" id="export-accounts">导出</button>
-            <button class="secondary" id="import-accounts">导入</button>
-            <button class="danger" id="reset-stats">清空统计</button>
-          </div>
-          <div class="status" id="meta-status"></div>
-        </section>
-      </aside>
+      <section class="card">
+        <h2 style="margin:0 0 8px;font-size:16px">控制台</h2>
+        <p class="muted" style="margin:0 0 14px">检测只更新账号可用性，不计入真实 API 请求数。代理端点可直接复制到客户端。</p>
+        <div class="field">
+          <input id="current-token" type="password" disabled />
+          <input id="api-test-model" placeholder="API 检测模型，默认 gpt-4.1-mini" />
+        </div>
+        <div class="endpoint-box">
+          <span class="mono muted" id="proxy-endpoint">/v1</span>
+          <button class="secondary" id="copy-endpoint">复制端点</button>
+        </div>
+        <div class="actions">
+          <button class="secondary" id="export-accounts">导出</button>
+          <button class="secondary" id="import-accounts">导入</button>
+          <button class="danger" id="reset-stats">清空统计</button>
+        </div>
+        <div class="status" id="meta-status"></div>
+      </section>
     </div>
+
+    <section class="card">
+      <div class="row">
+        <div>
+          <h2 style="margin:0 0 8px;font-size:16px">账号池</h2>
+          <p class="muted" style="margin:0">真实调用统计和健康检测状态已分开，账号多时先看筛选后的主表。</p>
+        </div>
+      </div>
+      <div class="fleet-board">
+        <div class="mini">
+          <b id="fleet-health-title">0 / 0</b>
+          <span class="muted">可用账号 / 总账号</span>
+          <div class="bar"><i id="fleet-health-bar" style="width:0%"></i></div>
+        </div>
+        <div class="mini">
+          <b>调用分布</b>
+          <div id="traffic-rank" class="rank-list" style="margin-top:10px"></div>
+        </div>
+      </div>
+      <div class="toolbar-meta">
+        <span id="visible-count">显示 0 / 0 个账号</span>
+        <span id="selected-count">已选 0 个</span>
+        <span>检测不会计入真实 API 请求</span>
+      </div>
+      <div class="toolbar">
+        <div class="filters">
+          <input id="account-search" placeholder="搜索账号、ID 或 Base URL" />
+          <select id="status-filter">
+            <option value="all">全部状态</option>
+            <option value="available">可参与轮询</option>
+            <option value="attention">需处理</option>
+            <option value="disabled">已停用</option>
+          </select>
+          <select id="sort-mode">
+            <option value="attention">需处理优先</option>
+            <option value="calls">请求数最多</option>
+            <option value="recent">最近使用</option>
+            <option value="label">名称排序</option>
+          </select>
+        </div>
+        <div class="actions" style="margin-top:0">
+          <label class="muted" style="display:flex;align-items:center;gap:8px">
+            <input id="select-all" class="check" type="checkbox" />
+            当前筛选全选
+          </label>
+          <button class="secondary" id="test-all">全部检测</button>
+          <button class="secondary" id="batch-enable">批量启用</button>
+          <button class="secondary" id="batch-disable">批量停用</button>
+        </div>
+      </div>
+      <div id="accounts"></div>
+    </section>
   </main>
   <script>
     const gateEl = document.getElementById("gate");
@@ -702,6 +741,7 @@ function renderAdminPage(): string {
         setStatus(gateStatusEl, "");
         setStatus(metaStatusEl, "验证通过。需要确认可用性时可手动点击全部检测。");
         await loadAccounts();
+        await loadRouting();
       } catch (error) {
         setStatus(gateStatusEl, error.message, true);
       }
@@ -711,6 +751,7 @@ function renderAdminPage(): string {
       document.getElementById("label").value = "";
       document.getElementById("baseUrl").value = "";
       document.getElementById("apiKey").value = "";
+      document.getElementById("weight").value = "";
       document.getElementById("extraHeaders").value = "";
     }
     function syncSelectAll() {
@@ -769,9 +810,9 @@ function renderAdminPage(): string {
         const successRate = account.stats?.calls ? Math.round(((account.stats.successes || 0) / account.stats.calls) * 100) + "%" : "--";
         const state = accountState(account);
         return '<tr class="row-' + state + '" style="animation-delay:' + Math.min(240, 24 * visible.indexOf(account)) + 'ms">' +
-          '<td><input class="check" type="checkbox" data-account-check="' + escapeHtml(account.id) + '" ' + checked + ' /></td>' +
-          '<td><div class="node-title"><b>' + escapeHtml(account.label) + '</b><span class="muted mono">' + escapeHtml(account.id) + '</span><span class="muted mono node-url" title="' + escapeHtml(account.baseUrl) + '">' + escapeHtml(account.baseUrl) + '</span></div></td>' +
-          '<td><div class="meta" style="margin-top:0">' + stateTag(account) + '<span class="tag">' + (headers.length ? "额外请求头 " + headers.length : "无额外请求头") + '</span>' + (account.health?.lastStatus ? '<span class="tag">检测状态 ' + account.health.lastStatus + '</span>' : '') + '</div>' + (account.health?.lastError ? '<div class="muted" style="margin-top:8px;color:#ff8f8f">' + escapeHtml(account.health.lastError).slice(0, 120) + '</div>' : '') + '</td>' +
+        '<td><input class="check" type="checkbox" data-account-check="' + escapeHtml(account.id) + '" ' + checked + ' /></td>' +
+        '<td><div class="node-title"><b>' + escapeHtml(account.label) + '</b><span class="muted mono">' + escapeHtml(account.id) + '</span><span class="muted mono node-url" title="' + escapeHtml(account.baseUrl) + '">' + escapeHtml(account.baseUrl) + '</span></div></td>' +
+          '<td><div class="meta" style="margin-top:0">' + stateTag(account) + '<span class="tag">权重 ' + (account.weight || 1) + '</span><span class="tag">' + (headers.length ? "额外请求头 " + headers.length : "无额外请求头") + '</span>' + (account.health?.lastStatus ? '<span class="tag">检测状态 ' + account.health.lastStatus + '</span>' : '') + '</div>' + (account.health?.lastError ? '<div class="muted" style="margin-top:8px;color:#ff8f8f">' + escapeHtml(account.health.lastError).slice(0, 120) + '</div>' : '') + '</td>' +
           '<td><div class="mono">' + (account.stats?.calls || 0) + ' 次</div><div class="muted">成功 ' + (account.stats?.successes || 0) + ' / 失败 ' + (account.stats?.errors || 0) + ' / ' + successRate + '</div><div class="muted">均耗时 ' + (account.stats?.avgDurationMs || 0) + 'ms</div></td>' +
           '<td><div class="mono">' + (account.health?.checks || 0) + ' 次</div><div class="muted">' + lastCheck + '</div></td>' +
           '<td><div class="muted">' + lastUsed + '</div></td>' +
@@ -806,6 +847,38 @@ function renderAdminPage(): string {
         setBusy("reload", false);
       }
     }
+    async function loadRouting() {
+      try {
+        const data = await api("/admin/routing");
+        const routing = data.routing || {};
+        document.getElementById("max-retry-accounts").value = String(routing.maxRetryAccounts || 3);
+        document.getElementById("disable-on-failure").checked = routing.disableOnFailure === true;
+      } catch (error) {
+        setStatus(metaStatusEl, error.message, true);
+      }
+    }
+    async function saveRouting() {
+      try {
+        setBusy("save-routing", true);
+        const payload = {
+          maxRetryAccounts: Number(document.getElementById("max-retry-accounts").value || 3),
+          disableOnFailure: document.getElementById("disable-on-failure").checked,
+        };
+        const data = await api("/admin/routing", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const routing = data.routing || payload;
+        document.getElementById("max-retry-accounts").value = String(routing.maxRetryAccounts || 3);
+        document.getElementById("disable-on-failure").checked = routing.disableOnFailure === true;
+        setStatus(statusEl, "路由策略已保存。");
+      } catch (error) {
+        setStatus(statusEl, error.message, true);
+      } finally {
+        setBusy("save-routing", false);
+      }
+    }
     async function copyEndpoint() {
       const endpoint = window.location.origin + "/v1";
       try {
@@ -823,6 +896,7 @@ function renderAdminPage(): string {
           label: document.getElementById("label").value.trim(),
           baseUrl: document.getElementById("baseUrl").value.trim(),
           apiKey: document.getElementById("apiKey").value.trim(),
+          weight: Number(document.getElementById("weight").value || 1),
           enabled: true,
           extraHeaders: parseExtraHeaders(),
         };
@@ -875,6 +949,7 @@ function renderAdminPage(): string {
         document.getElementById("label").value = account.label || "";
         document.getElementById("baseUrl").value = account.baseUrl || "";
         document.getElementById("apiKey").value = "";
+        document.getElementById("weight").value = String(account.weight || 1);
         document.getElementById("extraHeaders").value = JSON.stringify(account.extraHeaders || {}, null, 2);
         setStatus(statusEl, "已载入账号，可直接修改后保存。");
       } catch (error) {
@@ -982,6 +1057,7 @@ function renderAdminPage(): string {
       if (event.key === "Enter") verify();
     });
     document.getElementById("add-account").addEventListener("click", addAccount);
+    document.getElementById("save-routing").addEventListener("click", saveRouting);
     document.getElementById("reload").addEventListener("click", loadAccounts);
     document.getElementById("clear-form").addEventListener("click", clearForm);
     document.getElementById("test-all").addEventListener("click", probeAllAccounts);
@@ -1049,6 +1125,7 @@ export class RouterState extends DurableObject<Env> {
   private accountsCache: AccountRecord[] | null = null;
   private statsCache: Record<string, AccountStat> | null = null;
   private healthCache: Record<string, AccountHealth> | null = null;
+  private routingCache: RoutingSettings | null = null;
 
   private async getAccounts(): Promise<AccountRecord[]> {
     if (this.accountsCache) return this.accountsCache;
@@ -1086,6 +1163,26 @@ export class RouterState extends DurableObject<Env> {
     await this.ctx.storage.put(HEALTH_KEY, healthMap);
   }
 
+  private async getRoutingSettings(): Promise<RoutingSettings> {
+    if (this.routingCache) return this.routingCache;
+    const saved = await this.ctx.storage.get<Partial<RoutingSettings>>(ROUTING_KEY);
+    this.routingCache = {
+      ...createDefaultRouting(this.env.MAX_RETRY_ACCOUNTS),
+      ...(saved && typeof saved === "object" ? saved : {}),
+    };
+    this.routingCache.maxRetryAccounts = normalizeWeight(this.routingCache.maxRetryAccounts);
+    this.routingCache.disableOnFailure = this.routingCache.disableOnFailure === true;
+    return this.routingCache;
+  }
+
+  private async saveRoutingSettings(settings: RoutingSettings): Promise<void> {
+    this.routingCache = {
+      maxRetryAccounts: normalizeWeight(settings.maxRetryAccounts),
+      disableOnFailure: settings.disableOnFailure === true,
+    };
+    await this.ctx.storage.put(ROUTING_KEY, this.routingCache);
+  }
+
   private async getCursor(): Promise<number> {
     return (await this.ctx.storage.get<number>(CURSOR_KEY)) ?? 0;
   }
@@ -1111,6 +1208,14 @@ export class RouterState extends DurableObject<Env> {
     const target = accounts.find((item) => item.id === id);
     if (!target) return;
     target.unhealthyUntil = Date.now() + this.getCooldownMs();
+    await this.saveAccounts(accounts);
+  }
+
+  private async disableAccount(id: string): Promise<void> {
+    const accounts = await this.getAccounts();
+    const target = accounts.find((item) => item.id === id);
+    if (!target) return;
+    target.enabled = false;
     await this.saveAccounts(accounts);
   }
 
@@ -1233,8 +1338,9 @@ export class RouterState extends DurableObject<Env> {
     const healthy = enabled.filter((item) => (item.unhealthyUntil ?? 0) <= now);
     const pool = healthy.length > 0 ? healthy : enabled;
     if (pool.length === 0) return null;
+    const weightedPool = pool.flatMap((account) => Array.from({ length: normalizeWeight(account.weight) }, () => account));
     const cursor = await this.getCursor();
-    const account = pool[cursor % pool.length];
+    const account = weightedPool[cursor % weightedPool.length];
     await this.setCursor(cursor + 1);
     return account;
   }
@@ -1264,9 +1370,17 @@ export class RouterState extends DurableObject<Env> {
       ? undefined
       : await request.arrayBuffer();
     const excluded = new Set<string>();
+    const routing = await this.getRoutingSettings();
+    const enabledCount = (await this.getAccounts()).filter((item) => item.enabled).length;
+    const maxAttempts = Math.max(1, Math.min(routing.maxRetryAccounts, enabledCount || routing.maxRetryAccounts));
+    let attempts = 0;
     while (true) {
+      if (attempts >= maxAttempts) {
+        return json({ error: "Retry limit reached", attempts, maxAttempts }, { status: 502 });
+      }
       const account = await this.pickAccount(excluded);
       if (!account) return json({ error: "No available accounts" }, { status: 503 });
+      attempts += 1;
       const startedAt = Date.now();
       try {
         const headers = new Headers(request.headers);
@@ -1281,11 +1395,12 @@ export class RouterState extends DurableObject<Env> {
           body: requestBody,
           redirect: "manual",
         });
-        if (upstream.status >= 500) {
+        if (isAccountFailureStatus(upstream.status)) {
           excluded.add(account.id);
           await this.markUnhealthy(account.id);
           await this.recordProxyResult(account.id, upstream.status, Date.now() - startedAt, `HTTP ${upstream.status}`);
-          if (excluded.size >= (await this.getAccounts()).filter((item) => item.enabled).length) {
+          if (routing.disableOnFailure) await this.disableAccount(account.id);
+          if (excluded.size >= enabledCount || attempts >= maxAttempts) {
             return this.withProxyHeaders(upstream, account.id);
           }
           continue;
@@ -1298,8 +1413,8 @@ export class RouterState extends DurableObject<Env> {
         excluded.add(account.id);
         await this.markUnhealthy(account.id);
         await this.recordProxyResult(account.id, 502, Date.now() - startedAt, message);
-        const enabledCount = (await this.getAccounts()).filter((item) => item.enabled).length;
-        if (excluded.size >= enabledCount) {
+        if (routing.disableOnFailure) await this.disableAccount(account.id);
+        if (excluded.size >= enabledCount || attempts >= maxAttempts) {
           return json({ error: "All accounts failed", details: message }, { status: 502 });
         }
       }
@@ -1358,6 +1473,7 @@ export class RouterState extends DurableObject<Env> {
           baseUrl: account.baseUrl,
           apiKey: account.apiKey,
           enabled: account.enabled,
+          weight: normalizeWeight(account.weight),
           extraHeaders: account.extraHeaders ?? {},
         })),
       });
@@ -1399,6 +1515,25 @@ export class RouterState extends DurableObject<Env> {
     if (pathname === "/admin/stats/reset" && request.method === "POST") {
       await this.saveStatsMap({});
       return json({ ok: true });
+    }
+
+    if (pathname === "/admin/routing" && request.method === "GET") {
+      return json({ routing: await this.getRoutingSettings() });
+    }
+
+    if (pathname === "/admin/routing" && request.method === "PATCH") {
+      const payload = await readJsonBody<Partial<RoutingSettings>>(request);
+      const current = await this.getRoutingSettings();
+      const next = {
+        maxRetryAccounts: payload.maxRetryAccounts === undefined
+          ? current.maxRetryAccounts
+          : normalizeWeight(payload.maxRetryAccounts),
+        disableOnFailure: typeof payload.disableOnFailure === "boolean"
+          ? payload.disableOnFailure
+          : current.disableOnFailure,
+      };
+      await this.saveRoutingSettings(next);
+      return json({ ok: true, routing: next });
     }
 
     if (pathname === "/admin/accounts/test-all" && request.method === "POST") {
@@ -1455,6 +1590,7 @@ export class RouterState extends DurableObject<Env> {
       if (typeof payload.baseUrl === "string" && payload.baseUrl.trim()) target.baseUrl = normalizeBaseUrl(payload.baseUrl);
       if (typeof payload.apiKey === "string" && payload.apiKey.trim()) target.apiKey = payload.apiKey.trim();
       if (typeof payload.enabled === "boolean") target.enabled = payload.enabled;
+      if (payload.weight !== undefined) target.weight = normalizeWeight(payload.weight);
       if (payload.extraHeaders && typeof payload.extraHeaders === "object") target.extraHeaders = payload.extraHeaders;
       await this.saveAccounts(accounts);
       const [statsMap, healthMap] = await Promise.all([this.getStatsMap(), this.getHealthMap()]);
