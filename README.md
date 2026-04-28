@@ -11,14 +11,16 @@ It only does:
 
 It does **not** do provider/model translation.
 
-## Built-in admin UI
+## Built-in public monitor and admin UI
 
 After deploy, open:
 
-- `/`
-- or `/admin/ui`
+- `/` for the public health monitor
+- `/admin` for the management console
 
-The page lets you:
+The public monitor only shows aggregate availability, usage, and health-check status. It does not expose account details or management actions.
+
+The admin page lets you:
 
 - verify `AUTH_TOKEN` before entering the console
 - add/update accounts
@@ -44,6 +46,12 @@ Optional:
 All admin endpoints require:
 
 `Authorization: Bearer <AUTH_TOKEN>`
+
+### Public aggregate status
+
+`GET /public/status`
+
+This endpoint is intentionally unauthenticated and only returns aggregate health statistics for the public monitor.
 
 ### List accounts
 

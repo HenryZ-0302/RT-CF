@@ -225,6 +225,130 @@ function summarizeAccounts(
   };
 }
 
+function renderMonitorPage(): string {
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RT-CF Health</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0b1020;
+      --panel: rgba(17, 24, 45, 0.92);
+      --line: #26304a;
+      --text: #eef2ff;
+      --muted: #8b96b2;
+      --ok: #2bd4a8;
+      --warn: #ffb86b;
+      --bad: #ff6b6b;
+      --accent: #5b8cff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: linear-gradient(135deg, rgba(91, 140, 255, 0.10), transparent 34%), linear-gradient(180deg, #0b1020, #10172d);
+      color: var(--text);
+    }
+    .wrap { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 40px 0 72px; }
+    .hero { display: grid; gap: 10px; margin-bottom: 24px; }
+    h1 { margin: 0; font-size: clamp(28px, 5vw, 48px); letter-spacing: 0; }
+    p { margin: 0; color: var(--muted); line-height: 1.6; }
+    .status-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+    .dot { width: 10px; height: 10px; border-radius: 999px; background: var(--muted); box-shadow: 0 0 0 6px rgba(139, 150, 178, 0.12); }
+    .dot.ok { background: var(--ok); box-shadow: 0 0 0 6px rgba(43, 212, 168, 0.12); }
+    .dot.warn { background: var(--warn); box-shadow: 0 0 0 6px rgba(255, 184, 107, 0.12); }
+    .dot.bad { background: var(--bad); box-shadow: 0 0 0 6px rgba(255, 107, 107, 0.12); }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 22px 0; }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 18px;
+      animation: rise 420ms ease-out both;
+    }
+    .card b { display: block; font-size: 28px; margin-bottom: 4px; }
+    .card span { color: var(--muted); font-size: 13px; }
+    .wide { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .bar { height: 10px; border-radius: 999px; overflow: hidden; background: #151d35; margin-top: 12px; }
+    .bar i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--ok)); transition: width 520ms ease; }
+    .footer { color: var(--muted); font-size: 13px; margin-top: 18px; }
+    @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @media (max-width: 800px) { .grid, .wide { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 520px) { .grid, .wide { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <h1>RT-CF Health</h1>
+      <p>公开健康监控页面，只展示聚合状态，不暴露账号、密钥或管理操作。</p>
+      <div class="status-line">
+        <i id="state-dot" class="dot"></i>
+        <strong id="state-text">正在读取状态...</strong>
+      </div>
+    </section>
+    <section class="grid">
+      <div class="card"><b id="available">0</b><span>可参与轮询</span></div>
+      <div class="card"><b id="enabled">0</b><span>启用账号</span></div>
+      <div class="card"><b id="action">0</b><span>需处理</span></div>
+      <div class="card"><b id="calls">0</b><span>真实 API 请求</span></div>
+    </section>
+    <section class="wide">
+      <div class="card">
+        <b id="success-rate">0%</b>
+        <span>真实请求成功率</span>
+        <div class="bar"><i id="success-bar"></i></div>
+      </div>
+      <div class="card">
+        <b id="health-checks">0</b>
+        <span>健康检测次数</span>
+        <p class="footer" id="checked-at">尚未刷新</p>
+      </div>
+    </section>
+    <p class="footer">页面每 15 秒自动刷新。管理入口位于 /admin。</p>
+  </main>
+  <script>
+    function fmt(value) {
+      const n = Number(value || 0);
+      if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+      if (n >= 1000) return (n / 1000).toFixed(1) + "K";
+      return String(n);
+    }
+    function setText(id, value) {
+      document.getElementById(id).textContent = value;
+    }
+    async function loadStatus() {
+      try {
+        const response = await fetch("/public/status", { cache: "no-store" });
+        const data = await response.json();
+        const summary = data.summary || {};
+        const dot = document.getElementById("state-dot");
+        dot.className = "dot " + data.state;
+        setText("state-text", data.message || "状态未知");
+        setText("available", summary.available || 0);
+        setText("enabled", summary.enabled || 0);
+        setText("action", summary.actionRequired || 0);
+        setText("calls", fmt(summary.calls || 0));
+        setText("success-rate", String(summary.successRate || 0) + "%");
+        setText("health-checks", fmt(summary.healthChecks || 0));
+        document.getElementById("success-bar").style.width = Math.max(0, Math.min(100, summary.successRate || 0)) + "%";
+        setText("checked-at", "最后刷新：" + new Date(data.generatedAt || Date.now()).toLocaleString());
+      } catch {
+        document.getElementById("state-dot").className = "dot bad";
+        setText("state-text", "健康状态读取失败");
+      }
+    }
+    loadStatus();
+    window.setInterval(loadStatus, 15000);
+  </script>
+</body>
+</html>`;
+}
+
 function renderAdminPage(): string {
   return `<!doctype html>
 <html lang="zh-CN">
@@ -1113,9 +1237,15 @@ async function readJsonBody<T>(request: Request): Promise<T> {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const pathname = new URL(request.url).pathname;
+    const url = new URL(request.url);
+    const pathname = url.pathname;
     if (pathname === "/health") return json({ ok: true });
-    if (pathname === "/" || pathname === "/admin/ui") return html(renderAdminPage());
+    if (pathname === "/") return html(renderMonitorPage());
+    if (pathname === "/admin" || pathname === "/admin/") return html(renderAdminPage());
+    if (pathname === "/admin/ui") {
+      url.pathname = "/admin";
+      return Response.redirect(url.toString(), 302);
+    }
     const stub = env.ROUTER_STATE.getByName("router");
     return stub.fetch(request);
   },
@@ -1607,8 +1737,49 @@ export class RouterState extends DurableObject<Env> {
     return json({ error: "Method not allowed" }, { status: 405 });
   }
 
+  private async handlePublicStatus(): Promise<Response> {
+    const [accounts, statsMap, healthMap] = await Promise.all([
+      this.getAccounts(),
+      this.getStatsMap(),
+      this.getHealthMap(),
+    ]);
+    const summary = summarizeAccounts(accounts, statsMap, healthMap);
+    const state = summary.enabled === 0 || summary.available === 0
+      ? "bad"
+      : summary.actionRequired > 0
+        ? "warn"
+        : "ok";
+    const message = state === "ok"
+      ? "服务可用，账号池状态正常"
+      : state === "warn"
+        ? "服务可用，但有账号需要处理"
+        : "当前没有可用账号";
+
+    return json({
+      ok: summary.available > 0,
+      state,
+      message,
+      generatedAt: Date.now(),
+      summary: {
+        total: summary.total,
+        enabled: summary.enabled,
+        disabled: summary.disabled,
+        cooling: summary.cooling,
+        available: summary.available,
+        actionRequired: summary.actionRequired,
+        calls: summary.calls,
+        successes: summary.successes,
+        errors: summary.errors,
+        healthChecks: summary.healthChecks,
+        successRate: summary.successRate,
+        avgDurationMs: summary.avgDurationMs,
+      },
+    });
+  }
+
   override async fetch(request: Request): Promise<Response> {
     const pathname = new URL(request.url).pathname;
+    if (pathname === "/public/status") return this.handlePublicStatus();
     if (pathname.startsWith("/admin/")) {
       try {
         return await this.handleAdmin(request);
