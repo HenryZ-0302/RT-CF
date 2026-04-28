@@ -36,6 +36,16 @@ type AccountStat = {
   lastError: string | null;
 };
 
+type AccountHealth = {
+  checks: number;
+  failures: number;
+  lastOk: boolean | null;
+  lastStatus: number | null;
+  lastCheckedAt: number | null;
+  lastError: string | null;
+  mode: "health" | "chat" | null;
+};
+
 type PublicAccount = {
   id: string;
   label: string;
@@ -44,11 +54,13 @@ type PublicAccount = {
   extraHeaders: Record<string, string>;
   unhealthyUntil: number;
   stats: AccountStat;
+  health: AccountHealth;
 };
 
 const ACCOUNTS_KEY = "accounts";
 const CURSOR_KEY = "cursor";
 const STATS_KEY = "stats";
+const HEALTH_KEY = "health";
 
 function json(data: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(data), {
@@ -100,6 +112,18 @@ function createEmptyStat(): AccountStat {
   };
 }
 
+function createEmptyHealth(): AccountHealth {
+  return {
+    checks: 0,
+    failures: 0,
+    lastOk: null,
+    lastStatus: null,
+    lastCheckedAt: null,
+    lastError: null,
+    mode: null,
+  };
+}
+
 function generateAccountId(): string {
   return `rt-${Math.floor(100000000 + Math.random() * 900000000)}`;
 }
@@ -120,7 +144,7 @@ function sanitizeAccountInput(payload: AccountInput, fallbackApiKey: string): Ac
   };
 }
 
-function toPublicAccount(account: AccountRecord, stats: AccountStat): PublicAccount {
+function toPublicAccount(account: AccountRecord, stats: AccountStat, health: AccountHealth): PublicAccount {
   return {
     id: account.id,
     label: account.label,
@@ -129,22 +153,45 @@ function toPublicAccount(account: AccountRecord, stats: AccountStat): PublicAcco
     extraHeaders: account.extraHeaders ?? {},
     unhealthyUntil: account.unhealthyUntil ?? 0,
     stats,
+    health,
   };
 }
 
-function summarizeAccounts(accounts: AccountRecord[], statsMap: Record<string, AccountStat>) {
+function summarizeAccounts(
+  accounts: AccountRecord[],
+  statsMap: Record<string, AccountStat>,
+  healthMap: Record<string, AccountHealth> = {},
+) {
   const now = Date.now();
   const enabled = accounts.filter((account) => account.enabled).length;
   const cooling = accounts.filter((account) => (account.unhealthyUntil ?? 0) > now).length;
   const stats = Object.values(statsMap);
+  const successes = stats.reduce((sum, item) => sum + item.successes, 0);
+  const calls = stats.reduce((sum, item) => sum + item.calls, 0);
+  const health = accounts.map((account) => healthMap[account.id] ?? createEmptyHealth());
+  const available = accounts.filter((account) => {
+    const item = healthMap[account.id];
+    return account.enabled && (account.unhealthyUntil ?? 0) <= now && item?.lastOk !== false;
+  }).length;
+  const actionRequired = accounts.filter((account) => {
+    const item = healthMap[account.id];
+    return account.enabled && ((account.unhealthyUntil ?? 0) > now || item?.lastOk === false);
+  }).length;
   return {
     total: accounts.length,
     enabled,
     disabled: accounts.length - enabled,
     cooling,
-    calls: stats.reduce((sum, item) => sum + item.calls, 0),
-    successes: stats.reduce((sum, item) => sum + item.successes, 0),
+    available,
+    actionRequired,
+    calls,
+    successes,
     errors: stats.reduce((sum, item) => sum + item.errors, 0),
+    healthChecks: health.reduce((sum, item) => sum + item.checks, 0),
+    successRate: calls > 0 ? Math.round((successes / calls) * 100) : 0,
+    avgDurationMs: calls > 0
+      ? Math.round(stats.reduce((sum, item) => sum + item.totalDurationMs, 0) / calls)
+      : 0,
   };
 }
 
@@ -173,7 +220,7 @@ function renderAdminPage(): string {
       color: var(--text);
     }
     .hidden { display: none !important; }
-    .wrap { max-width: 1200px; margin: 0 auto; padding: 28px 20px 80px; }
+    .wrap { max-width: 1320px; margin: 0 auto; padding: 28px 20px 80px; }
     .gate {
       min-height: 100vh;
       display: flex;
@@ -184,7 +231,7 @@ function renderAdminPage(): string {
     .gate-card, .card {
       background: rgba(17, 24, 45, 0.94);
       border: 1px solid var(--line);
-      border-radius: 20px;
+      border-radius: 8px;
       box-shadow: 0 14px 36px rgba(0, 0, 0, 0.26);
     }
     .gate-card { width: 100%; max-width: 460px; padding: 28px; }
@@ -197,14 +244,14 @@ function renderAdminPage(): string {
       border: 1px solid var(--line);
       background: #0b1122;
       color: var(--text);
-      border-radius: 12px;
+      border-radius: 8px;
       padding: 12px 14px;
       font: inherit;
     }
     textarea { min-height: 96px; resize: vertical; }
     button {
       border: 0;
-      border-radius: 12px;
+      border-radius: 8px;
       padding: 10px 14px;
       font: inherit;
       cursor: pointer;
@@ -218,24 +265,47 @@ function renderAdminPage(): string {
     .top { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 16px; margin-bottom: 16px; }
     .card { padding: 20px; }
     .status { min-height: 18px; font-size: 13px; color: var(--muted); margin-top: 10px; }
-    .stats { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; margin-bottom: 16px; }
-    .stat, .mini { border: 1px solid var(--line); border-radius: 14px; background: rgba(8, 13, 28, 0.62); padding: 14px; }
+    .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
+    .stat, .mini { border: 1px solid var(--line); border-radius: 8px; background: rgba(8, 13, 28, 0.62); padding: 14px; }
     .stat b, .mini b { display: block; font-size: 20px; margin-bottom: 4px; }
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 18px 0 14px; }
     .check { width: 16px; height: 16px; accent-color: var(--accent); }
-    .dashboard { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-    .account-card { border: 1px solid var(--line); border-radius: 18px; background: rgba(8, 13, 28, 0.72); padding: 18px; }
+    .fleet-board { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 16px; margin-bottom: 16px; }
+    .rank-list { display: grid; gap: 10px; }
+    .rank-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+    .bar { height: 8px; border-radius: 999px; background: #151d35; overflow: hidden; margin-top: 6px; }
+    .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+    .filters { display: grid; grid-template-columns: minmax(220px, 1fr) 170px 170px; gap: 10px; width: min(100%, 680px); }
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #0b1122;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font: inherit;
+    }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; min-width: 1040px; }
+    th, td { padding: 12px 10px; border-bottom: 1px solid var(--line); text-align: left; font-size: 13px; vertical-align: middle; }
+    th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; background: rgba(8, 13, 28, 0.92); }
+    tr:last-child td { border-bottom: 0; }
+    .node-title { display: grid; gap: 4px; min-width: 220px; }
+    .node-title b { font-size: 14px; }
+    .node-url { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .inline-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; min-width: 260px; }
+    .inline-actions button { padding: 7px 9px; font-size: 12px; }
     .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
     .meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
     .tag { padding: 4px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); color: var(--muted); }
     .tag.ok { color: var(--accent-2); border-color: rgba(43, 212, 168, 0.35); }
     .tag.off { color: #ffb86b; border-color: rgba(255, 184, 107, 0.35); }
+    .tag.bad { color: var(--danger); border-color: rgba(255, 107, 107, 0.35); }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .account-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 14px; }
-    .list-empty { border: 1px dashed var(--line); border-radius: 18px; padding: 28px; color: var(--muted); text-align: center; }
+    .list-empty { border: 1px dashed var(--line); border-radius: 8px; padding: 28px; color: var(--muted); text-align: center; }
     @media (max-width: 1100px) { .stats { grid-template-columns: repeat(4, 1fr); } }
-    @media (max-width: 860px) { .top, .grid.two, .dashboard, .account-grid, .stats { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 560px) { .top, .grid.two, .dashboard, .account-grid, .stats { grid-template-columns: 1fr; } }
+    @media (max-width: 860px) { .top, .grid.two, .fleet-board, .stats, .filters { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 560px) { .top, .grid.two, .fleet-board, .stats, .filters { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -265,12 +335,16 @@ function renderAdminPage(): string {
 
     <section class="stats">
       <div class="stat"><b id="sum-total">0</b><span class="muted">总账号</span></div>
+      <div class="stat"><b id="sum-available">0</b><span class="muted">可参与轮询</span></div>
+      <div class="stat"><b id="sum-action">0</b><span class="muted">需处理</span></div>
       <div class="stat"><b id="sum-enabled">0</b><span class="muted">启用中</span></div>
       <div class="stat"><b id="sum-disabled">0</b><span class="muted">已停用</span></div>
-      <div class="stat"><b id="sum-cooling">0</b><span class="muted">冷却中</span></div>
-      <div class="stat"><b id="sum-calls">0</b><span class="muted">总请求</span></div>
+      <div class="stat"><b id="sum-calls">0</b><span class="muted">真实 API 请求</span></div>
       <div class="stat"><b id="sum-successes">0</b><span class="muted">成功</span></div>
       <div class="stat"><b id="sum-errors">0</b><span class="muted">失败</span></div>
+      <div class="stat"><b id="sum-success-rate">0%</b><span class="muted">真实成功率</span></div>
+      <div class="stat"><b id="sum-avg">0ms</b><span class="muted">真实均耗时</span></div>
+      <div class="stat"><b id="sum-health-checks">0</b><span class="muted">健康检测</span></div>
     </section>
 
     <div class="top">
@@ -297,7 +371,7 @@ function renderAdminPage(): string {
 
       <section class="card">
         <h2 style="margin:0 0 8px;font-size:16px">当前状态</h2>
-        <p class="muted" style="margin:0 0 14px">当前已通过验证的访问密码只用于浏览器会话。API 检测会使用下面的测试模型。</p>
+        <p class="muted" style="margin:0 0 14px">检测只更新账号可用性，不再计入真实 API 请求数。API 检测会使用下面的测试模型。</p>
         <div class="field">
           <input id="current-token" type="password" disabled />
           <input id="api-test-model" placeholder="API 检测模型，默认 gpt-4.1-mini" />
@@ -310,22 +384,50 @@ function renderAdminPage(): string {
       <div class="row">
         <div>
           <h2 style="margin:0 0 8px;font-size:16px">账号仪表盘</h2>
-          <p class="muted" style="margin:0">支持选择、批量启停、批量检测，以及查看每个账号的运行统计。</p>
+          <p class="muted" style="margin:0">真实调用统计和健康检测状态已分开，账号多时优先看这里。</p>
+        </div>
+      </div>
+      <div class="fleet-board">
+        <div class="mini">
+          <b id="fleet-health-title">0 / 0</b>
+          <span class="muted">可用账号 / 总账号</span>
+          <div class="bar"><i id="fleet-health-bar" style="width:0%"></i></div>
+        </div>
+        <div class="mini">
+          <b>调用分布</b>
+          <div id="traffic-rank" class="rank-list" style="margin-top:10px"></div>
         </div>
       </div>
       <div class="toolbar">
-        <label class="muted" style="display:flex;align-items:center;gap:8px">
-          <input id="select-all" class="check" type="checkbox" />
-          全选账号
-        </label>
+        <div class="filters">
+          <input id="account-search" placeholder="搜索账号、ID 或 Base URL" />
+          <select id="status-filter">
+            <option value="all">全部状态</option>
+            <option value="available">可参与轮询</option>
+            <option value="attention">需处理</option>
+            <option value="disabled">已停用</option>
+          </select>
+          <select id="sort-mode">
+            <option value="attention">需处理优先</option>
+            <option value="calls">请求数最多</option>
+            <option value="recent">最近使用</option>
+            <option value="label">名称排序</option>
+          </select>
+        </div>
         <div class="actions" style="margin-top:0">
+          <label class="muted" style="display:flex;align-items:center;gap:8px">
+            <input id="select-all" class="check" type="checkbox" />
+            全选
+          </label>
+          <button class="secondary" id="test-all">全部检测</button>
           <button class="secondary" id="export-accounts">导出</button>
           <button class="secondary" id="import-accounts">导入</button>
           <button class="secondary" id="batch-enable">批量启用</button>
           <button class="secondary" id="batch-disable">批量停用</button>
+          <button class="danger" id="reset-stats">清空统计</button>
         </div>
       </div>
-      <div id="accounts" class="dashboard"></div>
+      <div id="accounts"></div>
     </section>
   </main>
   <script>
@@ -338,6 +440,9 @@ function renderAdminPage(): string {
     const tokenInput = document.getElementById("token");
     const currentTokenInput = document.getElementById("current-token");
     const apiTestModelInput = document.getElementById("api-test-model");
+    const searchInput = document.getElementById("account-search");
+    const statusFilterInput = document.getElementById("status-filter");
+    const sortModeInput = document.getElementById("sort-mode");
     const selectedIds = new Set();
     let currentAccounts = [];
     tokenInput.value = localStorage.getItem("rt-router-token") || "";
@@ -346,6 +451,32 @@ function renderAdminPage(): string {
     function setStatus(target, message, isError = false) {
       target.textContent = message || "";
       target.style.color = isError ? "#ff8f8f" : "#8b96b2";
+    }
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[char]));
+    }
+    function fmtNumber(value) {
+      const n = Number(value || 0);
+      if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+      if (n >= 1000) return (n / 1000).toFixed(1) + "K";
+      return String(n);
+    }
+    function accountState(account) {
+      if (!account.enabled) return "disabled";
+      if ((account.unhealthyUntil || 0) > Date.now() || account.health?.lastOk === false) return "attention";
+      return "available";
+    }
+    function stateTag(account) {
+      const state = accountState(account);
+      if (state === "disabled") return '<span class="tag off">已停用</span>';
+      if (state === "attention") return '<span class="tag bad">需处理</span>';
+      return '<span class="tag ok">可参与轮询</span>';
     }
     function getToken() {
       return tokenInput.value.trim();
@@ -372,12 +503,20 @@ function renderAdminPage(): string {
     }
     function setSummary(summary) {
       document.getElementById("sum-total").textContent = String(summary.total || 0);
+      document.getElementById("sum-available").textContent = String(summary.available || 0);
+      document.getElementById("sum-action").textContent = String(summary.actionRequired || 0);
       document.getElementById("sum-enabled").textContent = String(summary.enabled || 0);
       document.getElementById("sum-disabled").textContent = String(summary.disabled || 0);
-      document.getElementById("sum-cooling").textContent = String(summary.cooling || 0);
-      document.getElementById("sum-calls").textContent = String(summary.calls || 0);
-      document.getElementById("sum-successes").textContent = String(summary.successes || 0);
-      document.getElementById("sum-errors").textContent = String(summary.errors || 0);
+      document.getElementById("sum-calls").textContent = fmtNumber(summary.calls || 0);
+      document.getElementById("sum-successes").textContent = fmtNumber(summary.successes || 0);
+      document.getElementById("sum-errors").textContent = fmtNumber(summary.errors || 0);
+      document.getElementById("sum-success-rate").textContent = String(summary.successRate || 0) + "%";
+      document.getElementById("sum-avg").textContent = String(summary.avgDurationMs || 0) + "ms";
+      document.getElementById("sum-health-checks").textContent = fmtNumber(summary.healthChecks || 0);
+      const total = Number(summary.total || 0);
+      const available = Number(summary.available || 0);
+      document.getElementById("fleet-health-title").textContent = available + " / " + total;
+      document.getElementById("fleet-health-bar").style.width = total > 0 ? Math.round((available / total) * 100) + "%" : "0%";
     }
     function unlockApp() {
       gateEl.classList.add("hidden");
@@ -412,51 +551,61 @@ function renderAdminPage(): string {
     }
     function renderAccounts(accounts) {
       currentAccounts = accounts;
+      const query = (searchInput.value || "").trim().toLowerCase();
+      const filter = statusFilterInput.value;
+      const sortMode = sortModeInput.value;
+      const totalCalls = accounts.reduce((sum, account) => sum + (account.stats?.calls || 0), 0);
+      const ranked = [...accounts]
+        .filter((account) => (account.stats?.calls || 0) > 0)
+        .sort((a, b) => (b.stats?.calls || 0) - (a.stats?.calls || 0))
+        .slice(0, 5);
+      document.getElementById("traffic-rank").innerHTML = ranked.length
+        ? ranked.map((account) => {
+            const calls = account.stats?.calls || 0;
+            const pct = totalCalls > 0 ? Math.max(2, Math.round((calls / totalCalls) * 100)) : 0;
+            return '<div class="rank-row"><div><div class="row" style="gap:8px"><span class="mono">' + escapeHtml(account.label) + '</span><span class="muted">' + calls + ' 次</span></div><div class="bar"><i style="width:' + pct + '%"></i></div></div><span class="muted">' + pct + '%</span></div>';
+          }).join("")
+        : '<span class="muted">暂无真实 API 调用。</span>';
+
+      let visible = accounts.filter((account) => {
+        const text = [account.id, account.label, account.baseUrl].join(" ").toLowerCase();
+        if (query && !text.includes(query)) return false;
+        if (filter !== "all" && accountState(account) !== filter) return false;
+        return true;
+      });
+      visible = visible.sort((a, b) => {
+        if (sortMode === "calls") return (b.stats?.calls || 0) - (a.stats?.calls || 0);
+        if (sortMode === "recent") return (b.stats?.lastUsedAt || 0) - (a.stats?.lastUsedAt || 0);
+        if (sortMode === "label") return String(a.label).localeCompare(String(b.label));
+        const score = (account) => accountState(account) === "attention" ? 0 : accountState(account) === "available" ? 1 : 2;
+        return score(a) - score(b);
+      });
       if (!accounts.length) {
         listEl.innerHTML = '<div class="list-empty">暂无账号。</div>';
         syncSelectAll();
         return;
       }
-      listEl.innerHTML = accounts.map((account) => {
+      if (!visible.length) {
+        listEl.innerHTML = '<div class="list-empty">没有符合筛选条件的账号。</div>';
+        syncSelectAll();
+        return;
+      }
+      listEl.innerHTML = '<div class="table-wrap"><table><thead><tr><th></th><th>账号</th><th>健康状态</th><th>真实 API 调用</th><th>检测</th><th>最近活动</th><th></th></tr></thead><tbody>' + visible.map((account) => {
         const headers = Object.keys(account.extraHeaders || {});
         const checked = selectedIds.has(account.id) ? "checked" : "";
-        return \`
-          <article class="account-card">
-            <div class="row">
-              <div style="display:flex;gap:10px;align-items:flex-start">
-                <input class="check" type="checkbox" data-account-check="\${account.id}" \${checked} />
-                <div>
-                  <h3 style="margin:0;font-size:17px">\${account.label}</h3>
-                  <div class="muted mono" style="margin-top:6px">\${account.baseUrl}</div>
-                </div>
-              </div>
-              <div class="actions" style="margin-top:0">
-                <button class="secondary" onclick="editAccount('\${account.id}')">编辑</button>
-                <button class="secondary" onclick="testAccount('\${account.id}')">API 检测</button>
-                <button class="secondary" onclick="toggleAccount('\${account.id}', \${!account.enabled})">\${account.enabled ? "停用" : "启用"}</button>
-                <button class="danger" onclick="removeAccount('\${account.id}')">删除</button>
-              </div>
-            </div>
-            <div class="meta">
-              <span class="tag">\${account.id}</span>
-              <span class="tag \${account.enabled ? "ok" : "off"}">\${account.enabled ? "启用中" : "已停用"}</span>
-              <span class="tag">\${headers.length ? ("额外请求头 " + headers.length) : "无额外请求头"}</span>
-              <span class="tag">\${account.unhealthyUntil && account.unhealthyUntil > Date.now() ? "冷却中" : "可参与轮询"}</span>
-              <span class="tag">\${account.stats.lastStatus ? ("上次状态 " + account.stats.lastStatus) : "尚无请求"}</span>
-            </div>
-            <div class="account-grid">
-              <div class="mini"><b>\${account.stats.calls}</b><span class="muted">请求</span></div>
-              <div class="mini"><b>\${account.stats.successes}</b><span class="muted">成功</span></div>
-              <div class="mini"><b>\${account.stats.errors}</b><span class="muted">失败</span></div>
-              <div class="mini"><b>\${account.stats.avgDurationMs}ms</b><span class="muted">均耗时</span></div>
-            </div>
-            <div class="muted" style="margin-top:12px;font-size:12px">
-              \${account.stats.lastUsedAt ? ("最近使用：" + new Date(account.stats.lastUsedAt).toLocaleString()) : "最近使用：暂无"}
-              \${account.stats.lastError ? (" ｜ 最近错误：" + account.stats.lastError) : ""}
-            </div>
-          </article>
-        \`;
-      }).join("");
+        const lastUsed = account.stats?.lastUsedAt ? new Date(account.stats.lastUsedAt).toLocaleString() : "暂无真实调用";
+        const lastCheck = account.health?.lastCheckedAt ? new Date(account.health.lastCheckedAt).toLocaleString() : "未检测";
+        const successRate = account.stats?.calls ? Math.round(((account.stats.successes || 0) / account.stats.calls) * 100) + "%" : "--";
+        return '<tr>' +
+          '<td><input class="check" type="checkbox" data-account-check="' + escapeHtml(account.id) + '" ' + checked + ' /></td>' +
+          '<td><div class="node-title"><b>' + escapeHtml(account.label) + '</b><span class="muted mono">' + escapeHtml(account.id) + '</span><span class="muted mono node-url" title="' + escapeHtml(account.baseUrl) + '">' + escapeHtml(account.baseUrl) + '</span></div></td>' +
+          '<td><div class="meta" style="margin-top:0">' + stateTag(account) + '<span class="tag">' + (headers.length ? "额外请求头 " + headers.length : "无额外请求头") + '</span>' + (account.health?.lastStatus ? '<span class="tag">检测状态 ' + account.health.lastStatus + '</span>' : '') + '</div>' + (account.health?.lastError ? '<div class="muted" style="margin-top:8px;color:#ff8f8f">' + escapeHtml(account.health.lastError).slice(0, 120) + '</div>' : '') + '</td>' +
+          '<td><div class="mono">' + (account.stats?.calls || 0) + ' 次</div><div class="muted">成功 ' + (account.stats?.successes || 0) + ' / 失败 ' + (account.stats?.errors || 0) + ' / ' + successRate + '</div><div class="muted">均耗时 ' + (account.stats?.avgDurationMs || 0) + 'ms</div></td>' +
+          '<td><div class="mono">' + (account.health?.checks || 0) + ' 次</div><div class="muted">' + lastCheck + '</div></td>' +
+          '<td><div class="muted">' + lastUsed + '</div></td>' +
+          '<td><div class="inline-actions"><button class="secondary" onclick="editAccount(\\'' + escapeHtml(account.id) + '\\')">编辑</button><button class="secondary" onclick="testAccount(\\'' + escapeHtml(account.id) + '\\')">可用检测</button><button class="secondary" onclick="toggleAccount(\\'' + escapeHtml(account.id) + '\\', ' + (!account.enabled) + ')">' + (account.enabled ? "停用" : "启用") + '</button><button class="danger" onclick="removeAccount(\\'' + escapeHtml(account.id) + '\\')">删除</button></div></td>' +
+          '</tr>';
+      }).join("") + '</tbody></table></div>';
       document.querySelectorAll("[data-account-check]").forEach((input) => {
         input.addEventListener("change", (event) => {
           const id = event.target.getAttribute("data-account-check");
@@ -519,13 +668,13 @@ function renderAdminPage(): string {
     }
     async function testAccount(id) {
       try {
-        setStatus(statusEl, "正在做 API 检测...");
+        setStatus(statusEl, "正在做可用性检测...");
         const data = await api("/admin/accounts/" + encodeURIComponent(id) + "/test", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ mode: "chat", model: getApiTestModel() }),
         });
-        setStatus(statusEl, "API 检测成功：" + (data.message || "可用"));
+        setStatus(statusEl, "可用性检测成功：" + (data.message || "可用"));
         await loadAccounts();
       } catch (error) {
         setStatus(statusEl, error.message, true);
@@ -624,6 +773,16 @@ function renderAdminPage(): string {
       };
       input.click();
     }
+    async function resetStats() {
+      if (!confirm("确认清空真实 API 调用统计？账号和健康检测记录会保留。")) return;
+      try {
+        await api("/admin/stats/reset", { method: "POST" });
+        setStatus(statusEl, "真实 API 调用统计已清空。");
+        await loadAccounts();
+      } catch (error) {
+        setStatus(statusEl, error.message, true);
+      }
+    }
     window.toggleAccount = toggleAccount;
     window.testAccount = testAccount;
     window.editAccount = editAccount;
@@ -632,13 +791,18 @@ function renderAdminPage(): string {
     document.getElementById("add-account").addEventListener("click", addAccount);
     document.getElementById("reload").addEventListener("click", loadAccounts);
     document.getElementById("clear-form").addEventListener("click", clearForm);
+    document.getElementById("test-all").addEventListener("click", probeAllAccounts);
     document.getElementById("export-accounts").addEventListener("click", exportAccounts);
     document.getElementById("import-accounts").addEventListener("click", importAccounts);
     document.getElementById("batch-enable").addEventListener("click", () => batchToggle(true));
     document.getElementById("batch-disable").addEventListener("click", () => batchToggle(false));
+    document.getElementById("reset-stats").addEventListener("click", resetStats);
     apiTestModelInput.addEventListener("change", () => {
       localStorage.setItem("rt-router-api-test-model", getApiTestModel());
     });
+    searchInput.addEventListener("input", () => renderAccounts(currentAccounts));
+    statusFilterInput.addEventListener("change", () => renderAccounts(currentAccounts));
+    sortModeInput.addEventListener("change", () => renderAccounts(currentAccounts));
     document.getElementById("select-all").addEventListener("change", (event) => {
       const checked = event.target.checked;
       currentAccounts.forEach((account) => {
@@ -690,6 +854,7 @@ export default {
 export class RouterState extends DurableObject<Env> {
   private accountsCache: AccountRecord[] | null = null;
   private statsCache: Record<string, AccountStat> | null = null;
+  private healthCache: Record<string, AccountHealth> | null = null;
 
   private async getAccounts(): Promise<AccountRecord[]> {
     if (this.accountsCache) return this.accountsCache;
@@ -713,6 +878,18 @@ export class RouterState extends DurableObject<Env> {
   private async saveStatsMap(statsMap: Record<string, AccountStat>): Promise<void> {
     this.statsCache = statsMap;
     await this.ctx.storage.put(STATS_KEY, statsMap);
+  }
+
+  private async getHealthMap(): Promise<Record<string, AccountHealth>> {
+    if (this.healthCache) return this.healthCache;
+    const saved = await this.ctx.storage.get<Record<string, AccountHealth>>(HEALTH_KEY);
+    this.healthCache = saved && typeof saved === "object" ? saved : {};
+    return this.healthCache;
+  }
+
+  private async saveHealthMap(healthMap: Record<string, AccountHealth>): Promise<void> {
+    this.healthCache = healthMap;
+    await this.ctx.storage.put(HEALTH_KEY, healthMap);
   }
 
   private async getCursor(): Promise<number> {
@@ -762,9 +939,41 @@ export class RouterState extends DurableObject<Env> {
     await this.saveStatsMap(statsMap);
   }
 
+  private async recordHealthResult(
+    id: string,
+    ok: boolean,
+    status: number | null,
+    mode: "health" | "chat",
+    errorMessage?: string,
+  ): Promise<void> {
+    const healthMap = await this.getHealthMap();
+    const current = healthMap[id] ?? createEmptyHealth();
+    current.checks += 1;
+    current.lastOk = ok;
+    current.lastStatus = status;
+    current.lastCheckedAt = Date.now();
+    current.mode = mode;
+    if (ok) {
+      current.lastError = null;
+    } else {
+      current.failures += 1;
+      current.lastError = errorMessage ?? (status ? `HTTP ${status}` : "Health check failed");
+    }
+    healthMap[id] = current;
+    await this.saveHealthMap(healthMap);
+  }
+
   private async getAccountsWithStats(): Promise<PublicAccount[]> {
-    const [accounts, statsMap] = await Promise.all([this.getAccounts(), this.getStatsMap()]);
-    return accounts.map((account) => toPublicAccount(account, statsMap[account.id] ?? createEmptyStat()));
+    const [accounts, statsMap, healthMap] = await Promise.all([
+      this.getAccounts(),
+      this.getStatsMap(),
+      this.getHealthMap(),
+    ]);
+    return accounts.map((account) => toPublicAccount(
+      account,
+      statsMap[account.id] ?? createEmptyStat(),
+      healthMap[account.id] ?? createEmptyHealth(),
+    ));
   }
 
   private async probeAccount(account: AccountRecord): Promise<{ ok: boolean; status?: number; message: string }> {
@@ -778,16 +987,16 @@ export class RouterState extends DurableObject<Env> {
       });
       if (!response.ok) {
         await this.markUnhealthy(account.id);
-        await this.recordProxyResult(account.id, response.status, 0, `HTTP ${response.status}`);
+        await this.recordHealthResult(account.id, false, response.status, "health", `HTTP ${response.status}`);
         return { ok: false, status: response.status, message: `HTTP ${response.status}` };
       }
       await this.markHealthy(account.id);
-      await this.recordProxyResult(account.id, response.status, 0);
+      await this.recordHealthResult(account.id, true, response.status, "health");
       return { ok: true, status: response.status, message: "模型列表可用" };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await this.markUnhealthy(account.id);
-      await this.recordProxyResult(account.id, 502, 0, message);
+      await this.recordHealthResult(account.id, false, null, "health", message);
       return { ok: false, message };
     }
   }
@@ -809,14 +1018,16 @@ export class RouterState extends DurableObject<Env> {
       });
       if (!response.ok) {
         const text = await response.text().catch(() => "");
-        await this.recordProxyResult(account.id, response.status, 0, text || `HTTP ${response.status}`);
+        await this.recordHealthResult(account.id, false, response.status, "chat", text || `HTTP ${response.status}`);
         return { ok: false, status: response.status, message: text || `HTTP ${response.status}` };
       }
-      await this.recordProxyResult(account.id, response.status, 0);
+      await this.markHealthy(account.id);
+      await this.recordHealthResult(account.id, true, response.status, "chat");
       return { ok: true, status: response.status, message: `模型 ${model} 可用` };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await this.recordProxyResult(account.id, 502, 0, message);
+      await this.markUnhealthy(account.id);
+      await this.recordHealthResult(account.id, false, null, "chat", message);
       return { ok: false, message };
     }
   }
@@ -908,17 +1119,22 @@ export class RouterState extends DurableObject<Env> {
     const pathname = url.pathname;
 
     if (pathname === "/admin/verify" && request.method === "GET") {
-      const [accounts, statsMap] = await Promise.all([this.getAccounts(), this.getStatsMap()]);
-      return json({ ok: true, summary: summarizeAccounts(accounts, statsMap) });
+      const [accounts, statsMap, healthMap] = await Promise.all([
+        this.getAccounts(),
+        this.getStatsMap(),
+        this.getHealthMap(),
+      ]);
+      return json({ ok: true, summary: summarizeAccounts(accounts, statsMap, healthMap) });
     }
 
     if (pathname === "/admin/accounts" && request.method === "GET") {
-      const [accounts, statsMap, records] = await Promise.all([
+      const [accounts, statsMap, healthMap, records] = await Promise.all([
         this.getAccounts(),
         this.getStatsMap(),
+        this.getHealthMap(),
         this.getAccountsWithStats(),
       ]);
-      return json({ accounts: records, summary: summarizeAccounts(accounts, statsMap) });
+      return json({ accounts: records, summary: summarizeAccounts(accounts, statsMap, healthMap) });
     }
 
     if (pathname === "/admin/accounts" && request.method === "POST") {
@@ -927,8 +1143,15 @@ export class RouterState extends DurableObject<Env> {
       const next = accounts.filter((item) => item.id !== payload.id);
       next.push(payload);
       await this.saveAccounts(next);
-      const statsMap = await this.getStatsMap();
-      return json({ ok: true, account: toPublicAccount(payload, statsMap[payload.id] ?? createEmptyStat()) }, { status: 201 });
+      const [statsMap, healthMap] = await Promise.all([this.getStatsMap(), this.getHealthMap()]);
+      return json({
+        ok: true,
+        account: toPublicAccount(
+          payload,
+          statsMap[payload.id] ?? createEmptyStat(),
+          healthMap[payload.id] ?? createEmptyHealth(),
+        ),
+      }, { status: 201 });
     }
 
     if (pathname === "/admin/accounts/export" && request.method === "GET") {
@@ -979,6 +1202,11 @@ export class RouterState extends DurableObject<Env> {
       return json({ ok: true, changed });
     }
 
+    if (pathname === "/admin/stats/reset" && request.method === "POST") {
+      await this.saveStatsMap({});
+      return json({ ok: true });
+    }
+
     if (pathname === "/admin/accounts/test-all" && request.method === "POST") {
       const accounts = await this.getAccounts();
       const targets = accounts.filter((account) => account.enabled);
@@ -998,8 +1226,14 @@ export class RouterState extends DurableObject<Env> {
     if (!target) return json({ error: "Account not found" }, { status: 404 });
 
     if (request.method === "GET" && itemMatch) {
-      const statsMap = await this.getStatsMap();
-      return json({ account: toPublicAccount(target, statsMap[target.id] ?? createEmptyStat()) });
+      const [statsMap, healthMap] = await Promise.all([this.getStatsMap(), this.getHealthMap()]);
+      return json({
+        account: toPublicAccount(
+          target,
+          statsMap[target.id] ?? createEmptyStat(),
+          healthMap[target.id] ?? createEmptyHealth(),
+        ),
+      });
     }
 
     if (request.method === "POST" && testMatch) {
@@ -1015,6 +1249,9 @@ export class RouterState extends DurableObject<Env> {
       const statsMap = await this.getStatsMap();
       delete statsMap[accountId];
       await this.saveStatsMap(statsMap);
+      const healthMap = await this.getHealthMap();
+      delete healthMap[accountId];
+      await this.saveHealthMap(healthMap);
       return json({ ok: true });
     }
 
@@ -1026,8 +1263,15 @@ export class RouterState extends DurableObject<Env> {
       if (typeof payload.enabled === "boolean") target.enabled = payload.enabled;
       if (payload.extraHeaders && typeof payload.extraHeaders === "object") target.extraHeaders = payload.extraHeaders;
       await this.saveAccounts(accounts);
-      const statsMap = await this.getStatsMap();
-      return json({ ok: true, account: toPublicAccount(target, statsMap[target.id] ?? createEmptyStat()) });
+      const [statsMap, healthMap] = await Promise.all([this.getStatsMap(), this.getHealthMap()]);
+      return json({
+        ok: true,
+        account: toPublicAccount(
+          target,
+          statsMap[target.id] ?? createEmptyStat(),
+          healthMap[target.id] ?? createEmptyHealth(),
+        ),
+      });
     }
 
     return json({ error: "Method not allowed" }, { status: 405 });

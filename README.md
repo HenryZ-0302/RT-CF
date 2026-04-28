@@ -24,6 +24,8 @@ The page lets you:
 - add/update accounts
 - enable/disable accounts
 - test a single account
+- view account availability separately from real proxy/API usage
+- filter and sort a compact account dashboard when the pool grows
 - delete accounts
 - inspect current router state
 
