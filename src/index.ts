@@ -211,16 +211,25 @@ function renderAdminPage(): string {
       --accent: #5b8cff;
       --accent-2: #2bd4a8;
       --danger: #ff6b6b;
+      --panel: rgba(17, 24, 45, 0.94);
+      --panel-soft: rgba(8, 13, 28, 0.62);
+      --motion-fast: 150ms;
+      --motion-med: 280ms;
+      --motion-slow: 520ms;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: linear-gradient(180deg, #0b1020, #0f1530);
+      background:
+        linear-gradient(135deg, rgba(91, 140, 255, 0.10), transparent 34%),
+        linear-gradient(215deg, rgba(43, 212, 168, 0.08), transparent 32%),
+        linear-gradient(180deg, #0b1020, #0f1530);
+      background-attachment: fixed;
       color: var(--text);
     }
     .hidden { display: none !important; }
-    .wrap { max-width: 1320px; margin: 0 auto; padding: 28px 20px 80px; }
+    .wrap { max-width: 1320px; margin: 0 auto; padding: 28px 20px 80px; animation: pageIn var(--motion-slow) ease-out both; }
     .gate {
       min-height: 100vh;
       display: flex;
@@ -229,10 +238,17 @@ function renderAdminPage(): string {
       padding: 20px;
     }
     .gate-card, .card {
-      background: rgba(17, 24, 45, 0.94);
+      background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
       box-shadow: 0 14px 36px rgba(0, 0, 0, 0.26);
+      transform: translateZ(0);
+      transition: border-color var(--motion-med) ease, box-shadow var(--motion-med) ease, transform var(--motion-med) ease;
+    }
+    .gate-card { animation: panelIn var(--motion-slow) ease-out both; }
+    .card:hover, .gate-card:hover {
+      border-color: rgba(91, 140, 255, 0.42);
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
     }
     .gate-card { width: 100%; max-width: 460px; padding: 28px; }
     .gate-card h1, .header h1 { margin: 0 0 8px; font-size: 28px; }
@@ -247,6 +263,13 @@ function renderAdminPage(): string {
       border-radius: 8px;
       padding: 12px 14px;
       font: inherit;
+      transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease, background var(--motion-fast) ease;
+    }
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: rgba(91, 140, 255, 0.75);
+      box-shadow: 0 0 0 3px rgba(91, 140, 255, 0.16);
+      background: #0e1730;
     }
     textarea { min-height: 96px; resize: vertical; }
     button {
@@ -257,24 +280,69 @@ function renderAdminPage(): string {
       cursor: pointer;
       color: white;
       background: var(--accent);
+      position: relative;
+      overflow: hidden;
+      transform: translateZ(0);
+      transition: transform var(--motion-fast) ease, box-shadow var(--motion-fast) ease, filter var(--motion-fast) ease, background var(--motion-fast) ease;
+    }
+    button:hover { transform: translateY(-1px); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.22); filter: brightness(1.05); }
+    button:active { transform: translateY(0) scale(0.98); box-shadow: none; }
+    button:disabled { cursor: wait; }
+    button.busy { pointer-events: none; opacity: 0.72; }
+    button.busy::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
+      animation: sheen 1s linear infinite;
     }
     button.secondary { background: #22304f; }
     button.danger { background: var(--danger); }
     .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
     .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
     .top { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 16px; margin-bottom: 16px; }
-    .card { padding: 20px; }
-    .status { min-height: 18px; font-size: 13px; color: var(--muted); margin-top: 10px; }
+    .card { padding: 20px; animation: panelIn var(--motion-slow) ease-out both; }
+    .top .card:nth-child(1) { animation-delay: 80ms; }
+    .top .card:nth-child(2) { animation-delay: 140ms; }
+    .status { min-height: 18px; font-size: 13px; color: var(--muted); margin-top: 10px; transition: color var(--motion-fast) ease, opacity var(--motion-fast) ease; }
+    .status.flash { animation: statusFlash 620ms ease-out; }
     .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
-    .stat, .mini { border: 1px solid var(--line); border-radius: 8px; background: rgba(8, 13, 28, 0.62); padding: 14px; }
-    .stat b, .mini b { display: block; font-size: 20px; margin-bottom: 4px; }
+    .stat, .mini {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      padding: 14px;
+      animation: panelIn var(--motion-slow) ease-out both;
+      transition: border-color var(--motion-med) ease, transform var(--motion-med) ease, background var(--motion-med) ease;
+    }
+    .stat:hover, .mini:hover { transform: translateY(-2px); border-color: rgba(91, 140, 255, 0.36); background: rgba(10, 18, 38, 0.76); }
+    .stat:nth-child(1) { animation-delay: 20ms; }
+    .stat:nth-child(2) { animation-delay: 40ms; }
+    .stat:nth-child(3) { animation-delay: 60ms; }
+    .stat:nth-child(4) { animation-delay: 80ms; }
+    .stat:nth-child(5) { animation-delay: 100ms; }
+    .stat:nth-child(6) { animation-delay: 120ms; }
+    .stat:nth-child(7) { animation-delay: 140ms; }
+    .stat:nth-child(8) { animation-delay: 160ms; }
+    .stat:nth-child(9) { animation-delay: 180ms; }
+    .stat:nth-child(10) { animation-delay: 200ms; }
+    .stat:nth-child(11) { animation-delay: 220ms; }
+    .stat b, .mini b { display: block; font-size: 20px; margin-bottom: 4px; transition: transform var(--motion-fast) ease, color var(--motion-fast) ease; }
+    .value-pop { animation: valuePop 360ms ease-out; color: #ffffff; }
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 18px 0 14px; }
-    .check { width: 16px; height: 16px; accent-color: var(--accent); }
+    .check { width: 16px; height: 16px; accent-color: var(--accent); transition: transform var(--motion-fast) ease; }
+    .check:checked { transform: scale(1.08); }
     .fleet-board { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 16px; margin-bottom: 16px; }
     .rank-list { display: grid; gap: 10px; }
-    .rank-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+    .rank-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; animation: rowIn 360ms ease-out both; }
     .bar { height: 8px; border-radius: 999px; background: #151d35; overflow: hidden; margin-top: 6px; }
-    .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+    .bar i {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      transition: width 680ms cubic-bezier(0.22, 1, 0.36, 1);
+      box-shadow: 0 0 16px rgba(43, 212, 168, 0.22);
+    }
     .filters { display: grid; grid-template-columns: minmax(220px, 1fr) 170px 170px; gap: 10px; width: min(100%, 680px); }
     select {
       width: 100%;
@@ -284,12 +352,20 @@ function renderAdminPage(): string {
       border-radius: 8px;
       padding: 12px 14px;
       font: inherit;
+      transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease, background var(--motion-fast) ease;
     }
     .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
     table { width: 100%; border-collapse: collapse; min-width: 1040px; }
     th, td { padding: 12px 10px; border-bottom: 1px solid var(--line); text-align: left; font-size: 13px; vertical-align: middle; }
     th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; background: rgba(8, 13, 28, 0.92); }
     tr:last-child td { border-bottom: 0; }
+    tbody tr {
+      animation: rowIn 360ms ease-out both;
+      transition: background var(--motion-fast) ease, transform var(--motion-fast) ease;
+    }
+    tbody tr:hover { background: rgba(91, 140, 255, 0.07); transform: translateX(2px); }
+    tbody tr.row-attention { background: rgba(255, 107, 107, 0.035); }
+    tbody tr.row-available { background: rgba(43, 212, 168, 0.025); }
     .node-title { display: grid; gap: 4px; min-width: 220px; }
     .node-title b { font-size: 14px; }
     .node-url { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -297,12 +373,60 @@ function renderAdminPage(): string {
     .inline-actions button { padding: 7px 9px; font-size: 12px; }
     .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
     .meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-    .tag { padding: 4px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); color: var(--muted); }
-    .tag.ok { color: var(--accent-2); border-color: rgba(43, 212, 168, 0.35); }
+    .tag {
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease, transform var(--motion-fast) ease;
+    }
+    .tag.ok { color: var(--accent-2); border-color: rgba(43, 212, 168, 0.35); animation: okPulse 2.8s ease-in-out infinite; }
     .tag.off { color: #ffb86b; border-color: rgba(255, 184, 107, 0.35); }
-    .tag.bad { color: var(--danger); border-color: rgba(255, 107, 107, 0.35); }
+    .tag.bad { color: var(--danger); border-color: rgba(255, 107, 107, 0.35); animation: warnPulse 1.8s ease-in-out infinite; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .list-empty { border: 1px dashed var(--line); border-radius: 8px; padding: 28px; color: var(--muted); text-align: center; }
+    .list-empty { border: 1px dashed var(--line); border-radius: 8px; padding: 28px; color: var(--muted); text-align: center; animation: panelIn var(--motion-slow) ease-out both; }
+    @keyframes pageIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes panelIn {
+      from { opacity: 0; transform: translateY(12px) scale(0.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes rowIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes valuePop {
+      0% { transform: scale(0.96); }
+      45% { transform: scale(1.08); }
+      100% { transform: scale(1); }
+    }
+    @keyframes statusFlash {
+      0% { opacity: 0.35; transform: translateY(-2px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes sheen {
+      from { transform: translateX(-100%); }
+      to { transform: translateX(100%); }
+    }
+    @keyframes okPulse {
+      0%, 100% { box-shadow: 0 0 0 rgba(43, 212, 168, 0); }
+      50% { box-shadow: 0 0 14px rgba(43, 212, 168, 0.12); }
+    }
+    @keyframes warnPulse {
+      0%, 100% { box-shadow: 0 0 0 rgba(255, 107, 107, 0); }
+      50% { box-shadow: 0 0 14px rgba(255, 107, 107, 0.16); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 1ms !important;
+      }
+    }
     @media (max-width: 1100px) { .stats { grid-template-columns: repeat(4, 1fr); } }
     @media (max-width: 860px) { .top, .grid.two, .fleet-board, .stats, .filters { grid-template-columns: 1fr 1fr; } }
     @media (max-width: 560px) { .top, .grid.two, .fleet-board, .stats, .filters { grid-template-columns: 1fr; } }
@@ -451,6 +575,24 @@ function renderAdminPage(): string {
     function setStatus(target, message, isError = false) {
       target.textContent = message || "";
       target.style.color = isError ? "#ff8f8f" : "#8b96b2";
+      target.classList.remove("flash");
+      if (message) requestAnimationFrame(() => target.classList.add("flash"));
+    }
+    function setBusy(id, busy) {
+      const button = document.getElementById(id);
+      if (!button) return;
+      button.classList.toggle("busy", busy);
+      button.disabled = busy;
+    }
+    function setMetric(id, value) {
+      const element = document.getElementById(id);
+      const next = String(value);
+      if (!element) return;
+      if (element.textContent !== next) {
+        element.textContent = next;
+        element.classList.remove("value-pop");
+        requestAnimationFrame(() => element.classList.add("value-pop"));
+      }
     }
     function escapeHtml(value) {
       return String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -502,20 +644,20 @@ function renderAdminPage(): string {
       return data;
     }
     function setSummary(summary) {
-      document.getElementById("sum-total").textContent = String(summary.total || 0);
-      document.getElementById("sum-available").textContent = String(summary.available || 0);
-      document.getElementById("sum-action").textContent = String(summary.actionRequired || 0);
-      document.getElementById("sum-enabled").textContent = String(summary.enabled || 0);
-      document.getElementById("sum-disabled").textContent = String(summary.disabled || 0);
-      document.getElementById("sum-calls").textContent = fmtNumber(summary.calls || 0);
-      document.getElementById("sum-successes").textContent = fmtNumber(summary.successes || 0);
-      document.getElementById("sum-errors").textContent = fmtNumber(summary.errors || 0);
-      document.getElementById("sum-success-rate").textContent = String(summary.successRate || 0) + "%";
-      document.getElementById("sum-avg").textContent = String(summary.avgDurationMs || 0) + "ms";
-      document.getElementById("sum-health-checks").textContent = fmtNumber(summary.healthChecks || 0);
+      setMetric("sum-total", summary.total || 0);
+      setMetric("sum-available", summary.available || 0);
+      setMetric("sum-action", summary.actionRequired || 0);
+      setMetric("sum-enabled", summary.enabled || 0);
+      setMetric("sum-disabled", summary.disabled || 0);
+      setMetric("sum-calls", fmtNumber(summary.calls || 0));
+      setMetric("sum-successes", fmtNumber(summary.successes || 0));
+      setMetric("sum-errors", fmtNumber(summary.errors || 0));
+      setMetric("sum-success-rate", String(summary.successRate || 0) + "%");
+      setMetric("sum-avg", String(summary.avgDurationMs || 0) + "ms");
+      setMetric("sum-health-checks", fmtNumber(summary.healthChecks || 0));
       const total = Number(summary.total || 0);
       const available = Number(summary.available || 0);
-      document.getElementById("fleet-health-title").textContent = available + " / " + total;
+      setMetric("fleet-health-title", available + " / " + total);
       document.getElementById("fleet-health-bar").style.width = total > 0 ? Math.round((available / total) * 100) + "%" : "0%";
     }
     function unlockApp() {
@@ -563,7 +705,7 @@ function renderAdminPage(): string {
         ? ranked.map((account) => {
             const calls = account.stats?.calls || 0;
             const pct = totalCalls > 0 ? Math.max(2, Math.round((calls / totalCalls) * 100)) : 0;
-            return '<div class="rank-row"><div><div class="row" style="gap:8px"><span class="mono">' + escapeHtml(account.label) + '</span><span class="muted">' + calls + ' 次</span></div><div class="bar"><i style="width:' + pct + '%"></i></div></div><span class="muted">' + pct + '%</span></div>';
+            return '<div class="rank-row" style="animation-delay:' + Math.min(240, 40 * pct) + 'ms"><div><div class="row" style="gap:8px"><span class="mono">' + escapeHtml(account.label) + '</span><span class="muted">' + calls + ' 次</span></div><div class="bar"><i style="width:' + pct + '%"></i></div></div><span class="muted">' + pct + '%</span></div>';
           }).join("")
         : '<span class="muted">暂无真实 API 调用。</span>';
 
@@ -596,7 +738,8 @@ function renderAdminPage(): string {
         const lastUsed = account.stats?.lastUsedAt ? new Date(account.stats.lastUsedAt).toLocaleString() : "暂无真实调用";
         const lastCheck = account.health?.lastCheckedAt ? new Date(account.health.lastCheckedAt).toLocaleString() : "未检测";
         const successRate = account.stats?.calls ? Math.round(((account.stats.successes || 0) / account.stats.calls) * 100) + "%" : "--";
-        return '<tr>' +
+        const state = accountState(account);
+        return '<tr class="row-' + state + '" style="animation-delay:' + Math.min(240, 24 * visible.indexOf(account)) + 'ms">' +
           '<td><input class="check" type="checkbox" data-account-check="' + escapeHtml(account.id) + '" ' + checked + ' /></td>' +
           '<td><div class="node-title"><b>' + escapeHtml(account.label) + '</b><span class="muted mono">' + escapeHtml(account.id) + '</span><span class="muted mono node-url" title="' + escapeHtml(account.baseUrl) + '">' + escapeHtml(account.baseUrl) + '</span></div></td>' +
           '<td><div class="meta" style="margin-top:0">' + stateTag(account) + '<span class="tag">' + (headers.length ? "额外请求头 " + headers.length : "无额外请求头") + '</span>' + (account.health?.lastStatus ? '<span class="tag">检测状态 ' + account.health.lastStatus + '</span>' : '') + '</div>' + (account.health?.lastError ? '<div class="muted" style="margin-top:8px;color:#ff8f8f">' + escapeHtml(account.health.lastError).slice(0, 120) + '</div>' : '') + '</td>' +
@@ -619,6 +762,7 @@ function renderAdminPage(): string {
     }
     async function loadAccounts() {
       try {
+        setBusy("reload", true);
         setStatus(statusEl, "正在加载账号列表...");
         const data = await api("/admin/accounts");
         const ids = new Set((data.accounts || []).map((account) => account.id));
@@ -629,10 +773,13 @@ function renderAdminPage(): string {
       } catch (error) {
         renderAccounts([]);
         setStatus(statusEl, error.message, true);
+      } finally {
+        setBusy("reload", false);
       }
     }
     async function addAccount() {
       try {
+        setBusy("add-account", true);
         const payload = {
           id: document.getElementById("id").value.trim(),
           label: document.getElementById("label").value.trim(),
@@ -651,6 +798,8 @@ function renderAdminPage(): string {
         await loadAccounts();
       } catch (error) {
         setStatus(statusEl, error.message, true);
+      } finally {
+        setBusy("add-account", false);
       }
     }
     async function toggleAccount(id, enabled) {
@@ -724,12 +873,15 @@ function renderAdminPage(): string {
     }
     async function probeAllAccounts() {
       try {
+        setBusy("test-all", true);
         setStatus(metaStatusEl, "正在自动检测账号存活...");
         const data = await api("/admin/accounts/test-all", { method: "POST" });
         setStatus(metaStatusEl, "自动检测完成：" + (data.okCount || 0) + "/" + (data.total || 0) + " 可用。");
         await loadAccounts();
       } catch (error) {
         setStatus(metaStatusEl, error.message, true);
+      } finally {
+        setBusy("test-all", false);
       }
     }
     function downloadJson(filename, data) {
