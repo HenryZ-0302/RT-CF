@@ -235,61 +235,111 @@ function renderMonitorPage(): string {
   <style>
     :root {
       color-scheme: light dark;
-      --bg: #0b1020;
-      --panel: rgba(17, 24, 45, 0.92);
-      --line: #26304a;
-      --text: #eef2ff;
-      --muted: #8b96b2;
-      --ok: #2bd4a8;
-      --warn: #ffb86b;
-      --bad: #ff6b6b;
-      --accent: #5b8cff;
+      --paper: #f4f0e8;
+      --ink: #18202b;
+      --muted: #6d7580;
+      --panel: rgba(255, 252, 246, 0.86);
+      --panel-strong: #fffaf1;
+      --line: rgba(37, 45, 59, 0.14);
+      --ok: #138f73;
+      --warn: #b66b18;
+      --bad: #c84c4c;
+      --accent: #2d62d6;
+      --shadow: 0 22px 70px rgba(45, 55, 72, 0.12);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: linear-gradient(135deg, rgba(91, 140, 255, 0.10), transparent 34%), linear-gradient(180deg, #0b1020, #10172d);
-      color: var(--text);
+      background:
+        linear-gradient(180deg, rgba(255, 250, 241, 0.92), rgba(244, 240, 232, 0.96)),
+        repeating-linear-gradient(90deg, rgba(24, 32, 43, 0.035) 0 1px, transparent 1px 88px);
+      color: var(--ink);
     }
-    .wrap { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 40px 0 72px; }
-    .hero { display: grid; gap: 10px; margin-bottom: 24px; }
-    h1 { margin: 0; font-size: clamp(28px, 5vw, 48px); letter-spacing: 0; }
-    p { margin: 0; color: var(--muted); line-height: 1.6; }
-    .status-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
-    .dot { width: 10px; height: 10px; border-radius: 999px; background: var(--muted); box-shadow: 0 0 0 6px rgba(139, 150, 178, 0.12); }
-    .dot.ok { background: var(--ok); box-shadow: 0 0 0 6px rgba(43, 212, 168, 0.12); }
-    .dot.warn { background: var(--warn); box-shadow: 0 0 0 6px rgba(255, 184, 107, 0.12); }
-    .dot.bad { background: var(--bad); box-shadow: 0 0 0 6px rgba(255, 107, 107, 0.12); }
-    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 22px 0; }
-    .card {
+    .wrap { width: min(1160px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0 72px; }
+    .masthead {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      gap: 18px;
+      align-items: stretch;
+      margin-bottom: 18px;
+    }
+    .hero, .status-tile, .card {
       border: 1px solid var(--line);
       border-radius: 8px;
       background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+    .hero { padding: clamp(24px, 4vw, 42px); display: grid; gap: 14px; }
+    .eyebrow { color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+    h1 { margin: 0; max-width: 760px; font-size: clamp(34px, 6vw, 64px); line-height: 0.96; letter-spacing: 0; text-wrap: pretty; }
+    p { margin: 0; color: var(--muted); line-height: 1.7; text-wrap: pretty; }
+    .status-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+    .dot { width: 11px; height: 11px; border-radius: 999px; background: var(--muted); box-shadow: 0 0 0 7px rgba(109, 117, 128, 0.13); }
+    .dot.ok { background: var(--ok); box-shadow: 0 0 0 7px rgba(19, 143, 115, 0.13); }
+    .dot.warn { background: var(--warn); box-shadow: 0 0 0 7px rgba(182, 107, 24, 0.14); }
+    .dot.bad { background: var(--bad); box-shadow: 0 0 0 7px rgba(200, 76, 76, 0.14); }
+    .status-tile { padding: 20px; display: flex; flex-direction: column; justify-content: space-between; min-height: 220px; }
+    .ring {
+      width: 116px;
+      height: 116px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      display: grid;
+      place-items: center;
+      background: conic-gradient(from 210deg, rgba(19, 143, 115, 0.24), rgba(45, 98, 214, 0.14), rgba(24, 32, 43, 0.05));
+    }
+    .ring::after { content: ""; width: 62px; height: 62px; border-radius: inherit; background: var(--panel-strong); border: 1px solid var(--line); }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 12px 0; }
+    .card {
       padding: 18px;
       animation: rise 420ms ease-out both;
     }
-    .card b { display: block; font-size: 28px; margin-bottom: 4px; }
+    .card b { display: block; font-size: clamp(26px, 4vw, 36px); line-height: 1; margin-bottom: 8px; }
     .card span { color: var(--muted); font-size: 13px; }
-    .wide { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    .bar { height: 10px; border-radius: 999px; overflow: hidden; background: #151d35; margin-top: 12px; }
+    .wide { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 12px; }
+    .bar { height: 11px; border-radius: 999px; overflow: hidden; background: rgba(24, 32, 43, 0.09); margin-top: 16px; }
     .bar i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--ok)); transition: width 520ms ease; }
     .footer { color: var(--muted); font-size: 13px; margin-top: 18px; }
     @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-    @media (max-width: 800px) { .grid, .wide { grid-template-columns: 1fr 1fr; } }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --paper: #151515;
+        --ink: #f5efe4;
+        --muted: #a7a094;
+        --panel: rgba(29, 29, 27, 0.86);
+        --panel-strong: #20201d;
+        --line: rgba(245, 239, 228, 0.12);
+        --shadow: 0 22px 70px rgba(0, 0, 0, 0.28);
+      }
+      body {
+        background:
+          linear-gradient(180deg, rgba(21, 21, 21, 0.95), rgba(31, 30, 27, 0.96)),
+          repeating-linear-gradient(90deg, rgba(245, 239, 228, 0.035) 0 1px, transparent 1px 88px);
+      }
+    }
+    @media (max-width: 820px) { .masthead { grid-template-columns: 1fr; } .grid, .wide { grid-template-columns: 1fr 1fr; } }
     @media (max-width: 520px) { .grid, .wide { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <main class="wrap">
-    <section class="hero">
-      <h1>RT-CF Health</h1>
-      <p>公开健康监控页面，只展示聚合状态，不暴露账号、密钥或管理操作。</p>
-      <div class="status-line">
-        <i id="state-dot" class="dot"></i>
-        <strong id="state-text">正在读取状态...</strong>
+    <section class="masthead">
+      <div class="hero">
+        <span class="eyebrow">Public service board</span>
+        <h1>RT-CF Health</h1>
+        <p>这是面向外部的健康监控页，只展示聚合状态，不暴露账号、密钥或管理操作。</p>
+        <div class="status-line">
+          <i id="state-dot" class="dot"></i>
+          <strong id="state-text">正在读取状态...</strong>
+        </div>
       </div>
+      <aside class="status-tile">
+        <div class="ring" aria-hidden="true"></div>
+        <p>自动刷新，不需要登录。管理入口位于 /admin，但此页不提供跳转按钮。</p>
+      </aside>
     </section>
     <section class="grid">
       <div class="card"><b id="available">0</b><span>可参与轮询</span></div>
@@ -309,7 +359,7 @@ function renderMonitorPage(): string {
         <p class="footer" id="checked-at">尚未刷新</p>
       </div>
     </section>
-    <p class="footer">页面每 15 秒自动刷新。管理入口位于 /admin。</p>
+    <p class="footer">页面每 15 秒自动刷新。公开页只用于健康披露。</p>
   </main>
   <script>
     function fmt(value) {
@@ -359,14 +409,20 @@ function renderAdminPage(): string {
   <style>
     :root {
       color-scheme: light dark;
-      --muted: #8b96b2;
-      --line: #26304a;
-      --text: #eef2ff;
-      --accent: #5b8cff;
-      --accent-2: #2bd4a8;
-      --danger: #ff6b6b;
-      --panel: rgba(17, 24, 45, 0.94);
-      --panel-soft: rgba(8, 13, 28, 0.62);
+      --bg: #f2eee6;
+      --surface: #fffaf1;
+      --surface-2: #f8f2e8;
+      --surface-3: #ece6dc;
+      --muted: #6f746f;
+      --line: rgba(28, 35, 43, 0.13);
+      --text: #1d252c;
+      --accent: #295fc8;
+      --accent-2: #14866d;
+      --danger: #c94f4f;
+      --warn: #b07123;
+      --panel: rgba(255, 250, 241, 0.9);
+      --panel-soft: rgba(248, 242, 232, 0.78);
+      --shadow: 0 18px 48px rgba(55, 64, 76, 0.12);
       --motion-fast: 150ms;
       --motion-med: 280ms;
       --motion-slow: 520ms;
@@ -376,14 +432,13 @@ function renderAdminPage(): string {
       margin: 0;
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background:
-        linear-gradient(135deg, rgba(91, 140, 255, 0.10), transparent 34%),
-        linear-gradient(215deg, rgba(43, 212, 168, 0.08), transparent 32%),
-        linear-gradient(180deg, #0b1020, #0f1530);
+        linear-gradient(180deg, rgba(255, 250, 241, 0.94), rgba(242, 238, 230, 0.98)),
+        repeating-linear-gradient(90deg, rgba(29, 37, 44, 0.032) 0 1px, transparent 1px 96px);
       background-attachment: fixed;
       color: var(--text);
     }
     .hidden { display: none !important; }
-    .wrap { max-width: 1320px; margin: 0 auto; padding: 28px 20px 80px; animation: pageIn var(--motion-slow) ease-out both; }
+    .wrap { max-width: 1400px; margin: 0 auto; padding: 26px 20px 80px; animation: pageIn var(--motion-slow) ease-out both; }
     .gate {
       min-height: 100vh;
       display: flex;
@@ -395,24 +450,25 @@ function renderAdminPage(): string {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
-      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.26);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
       transform: translateZ(0);
       transition: border-color var(--motion-med) ease, box-shadow var(--motion-med) ease, transform var(--motion-med) ease;
     }
     .gate-card { animation: panelIn var(--motion-slow) ease-out both; }
     .card:hover, .gate-card:hover {
-      border-color: rgba(91, 140, 255, 0.42);
-      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+      border-color: rgba(41, 95, 200, 0.34);
+      box-shadow: 0 24px 64px rgba(55, 64, 76, 0.16);
     }
     .gate-card { width: 100%; max-width: 460px; padding: 28px; }
-    .gate-card h1, .header h1 { margin: 0 0 8px; font-size: 28px; }
-    .gate-card p, .muted { color: var(--muted); line-height: 1.6; }
+    .gate-card h1, .header h1 { margin: 0 0 8px; font-size: clamp(28px, 4vw, 42px); line-height: 1; letter-spacing: 0; }
+    .gate-card p, .muted { color: var(--muted); line-height: 1.6; text-wrap: pretty; }
     .field, .grid { display: grid; gap: 10px; }
     .grid.two { grid-template-columns: 1fr 1fr; }
     input, textarea {
       width: 100%;
       border: 1px solid var(--line);
-      background: #0b1122;
+      background: var(--surface);
       color: var(--text);
       border-radius: 8px;
       padding: 12px 14px;
@@ -421,9 +477,9 @@ function renderAdminPage(): string {
     }
     input:focus, textarea:focus, select:focus {
       outline: none;
-      border-color: rgba(91, 140, 255, 0.75);
-      box-shadow: 0 0 0 3px rgba(91, 140, 255, 0.16);
-      background: #0e1730;
+      border-color: rgba(41, 95, 200, 0.65);
+      box-shadow: 0 0 0 3px rgba(41, 95, 200, 0.14);
+      background: #ffffff;
     }
     textarea { min-height: 96px; resize: vertical; }
     button {
@@ -439,7 +495,7 @@ function renderAdminPage(): string {
       transform: translateZ(0);
       transition: transform var(--motion-fast) ease, box-shadow var(--motion-fast) ease, filter var(--motion-fast) ease, background var(--motion-fast) ease;
     }
-    button:hover { transform: translateY(-1px); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.22); filter: brightness(1.05); }
+    button:hover { transform: translateY(-1px); box-shadow: 0 10px 22px rgba(55, 64, 76, 0.18); filter: brightness(1.03); }
     button:active { transform: translateY(0) scale(0.98); box-shadow: none; }
     button:disabled { cursor: wait; }
     button.busy { pointer-events: none; opacity: 0.72; }
@@ -450,17 +506,26 @@ function renderAdminPage(): string {
       background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
       animation: sheen 1s linear infinite;
     }
-    button.secondary { background: #22304f; }
+    button.secondary { background: #394557; }
     button.danger { background: var(--danger); }
     .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
-    .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
-    .top { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 16px; margin-bottom: 16px; }
+    .header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 16px;
+      margin-bottom: 18px;
+      padding: 22px 0 4px;
+      border-bottom: 1px solid var(--line);
+    }
+    .kicker { color: var(--accent); font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 10px; }
+    .top { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr); gap: 16px; margin-bottom: 16px; align-items: start; }
     .card { padding: 20px; animation: panelIn var(--motion-slow) ease-out both; }
     .top .card:nth-child(1) { animation-delay: 80ms; }
     .top .card:nth-child(2) { animation-delay: 140ms; }
     .status { min-height: 18px; font-size: 13px; color: var(--muted); margin-top: 10px; transition: color var(--motion-fast) ease, opacity var(--motion-fast) ease; }
     .status.flash { animation: statusFlash 620ms ease-out; }
-    .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
+    .stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 16px; }
     .stat, .mini {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -469,7 +534,12 @@ function renderAdminPage(): string {
       animation: panelIn var(--motion-slow) ease-out both;
       transition: border-color var(--motion-med) ease, transform var(--motion-med) ease, background var(--motion-med) ease;
     }
-    .stat:hover, .mini:hover { transform: translateY(-2px); border-color: rgba(91, 140, 255, 0.36); background: rgba(10, 18, 38, 0.76); }
+    .stat:hover, .mini:hover { transform: translateY(-2px); border-color: rgba(41, 95, 200, 0.26); background: rgba(255, 250, 241, 0.94); }
+    .stat.primary { grid-column: span 2; background: #1f2a35; color: #fffaf1; }
+    .stat.primary .muted { color: rgba(255, 250, 241, 0.72); }
+    .stat.good { border-color: rgba(20, 134, 109, 0.28); }
+    .stat.warn { border-color: rgba(176, 113, 35, 0.32); }
+    .stat.bad { border-color: rgba(201, 79, 79, 0.28); }
     .stat:nth-child(1) { animation-delay: 20ms; }
     .stat:nth-child(2) { animation-delay: 40ms; }
     .stat:nth-child(3) { animation-delay: 60ms; }
@@ -481,16 +551,17 @@ function renderAdminPage(): string {
     .stat:nth-child(9) { animation-delay: 180ms; }
     .stat:nth-child(10) { animation-delay: 200ms; }
     .stat:nth-child(11) { animation-delay: 220ms; }
-    .stat b, .mini b { display: block; font-size: 20px; margin-bottom: 4px; transition: transform var(--motion-fast) ease, color var(--motion-fast) ease; }
-    .value-pop { animation: valuePop 360ms ease-out; color: #ffffff; }
+    .stat b, .mini b { display: block; font-size: clamp(20px, 2.2vw, 30px); line-height: 1; margin-bottom: 7px; transition: transform var(--motion-fast) ease, color var(--motion-fast) ease; }
+    .value-pop { animation: valuePop 360ms ease-out; color: var(--accent); }
+    .stat.primary .value-pop { color: #fffaf1; }
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 18px 0 14px; }
     .toolbar-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: 13px; margin-bottom: 12px; }
     .check { width: 16px; height: 16px; accent-color: var(--accent); transition: transform var(--motion-fast) ease; }
     .check:checked { transform: scale(1.08); }
-    .fleet-board { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 16px; margin-bottom: 16px; }
+    .fleet-board { display: grid; grid-template-columns: 0.85fr 1.15fr; gap: 12px; margin-bottom: 16px; }
     .rank-list { display: grid; gap: 10px; }
     .rank-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; animation: rowIn 360ms ease-out both; }
-    .bar { height: 8px; border-radius: 999px; background: #151d35; overflow: hidden; margin-top: 6px; }
+    .bar { height: 9px; border-radius: 999px; background: rgba(29, 37, 44, 0.10); overflow: hidden; margin-top: 8px; }
     .bar i {
       display: block;
       height: 100%;
@@ -502,25 +573,25 @@ function renderAdminPage(): string {
     select {
       width: 100%;
       border: 1px solid var(--line);
-      background: #0b1122;
+      background: var(--surface);
       color: var(--text);
       border-radius: 8px;
       padding: 12px 14px;
       font: inherit;
       transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease, background var(--motion-fast) ease;
     }
-    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 250, 241, 0.58); }
     table { width: 100%; border-collapse: collapse; min-width: 1040px; }
-    th, td { padding: 12px 10px; border-bottom: 1px solid var(--line); text-align: left; font-size: 13px; vertical-align: middle; }
-    th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; background: rgba(8, 13, 28, 0.92); }
+    th, td { padding: 13px 10px; border-bottom: 1px solid var(--line); text-align: left; font-size: 13px; vertical-align: middle; }
+    th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; background: rgba(236, 230, 220, 0.76); }
     tr:last-child td { border-bottom: 0; }
     tbody tr {
       animation: rowIn 360ms ease-out both;
       transition: background var(--motion-fast) ease, transform var(--motion-fast) ease;
     }
-    tbody tr:hover { background: rgba(91, 140, 255, 0.07); transform: translateX(2px); }
-    tbody tr.row-attention { background: rgba(255, 107, 107, 0.035); }
-    tbody tr.row-available { background: rgba(43, 212, 168, 0.025); }
+    tbody tr:hover { background: rgba(41, 95, 200, 0.055); transform: translateX(2px); }
+    tbody tr.row-attention { background: rgba(201, 79, 79, 0.045); }
+    tbody tr.row-available { background: rgba(20, 134, 109, 0.035); }
     .node-title { display: grid; gap: 4px; min-width: 220px; }
     .node-title b { font-size: 14px; }
     .node-url { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -535,7 +606,7 @@ function renderAdminPage(): string {
       padding: 10px;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: rgba(8, 13, 28, 0.52);
+      background: rgba(236, 230, 220, 0.52);
     }
     .endpoint-box .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
@@ -548,9 +619,9 @@ function renderAdminPage(): string {
       color: var(--muted);
       transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease, transform var(--motion-fast) ease;
     }
-    .tag.ok { color: var(--accent-2); border-color: rgba(43, 212, 168, 0.35); animation: okPulse 2.8s ease-in-out infinite; }
-    .tag.off { color: #ffb86b; border-color: rgba(255, 184, 107, 0.35); }
-    .tag.bad { color: var(--danger); border-color: rgba(255, 107, 107, 0.35); animation: warnPulse 1.8s ease-in-out infinite; }
+    .tag.ok { color: var(--accent-2); border-color: rgba(20, 134, 109, 0.35); animation: okPulse 2.8s ease-in-out infinite; }
+    .tag.off { color: var(--warn); border-color: rgba(176, 113, 35, 0.35); }
+    .tag.bad { color: var(--danger); border-color: rgba(201, 79, 79, 0.35); animation: warnPulse 1.8s ease-in-out infinite; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .list-empty { border: 1px dashed var(--line); border-radius: 8px; padding: 28px; color: var(--muted); text-align: center; animation: panelIn var(--motion-slow) ease-out both; }
     @keyframes pageIn {
@@ -594,9 +665,36 @@ function renderAdminPage(): string {
         transition-duration: 1ms !important;
       }
     }
-    @media (max-width: 1100px) { .stats { grid-template-columns: repeat(4, 1fr); } }
-    @media (max-width: 860px) { .top, .grid.two, .fleet-board, .stats, .filters { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 560px) { .top, .grid.two, .fleet-board, .stats, .filters { grid-template-columns: 1fr; } }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #171716;
+        --surface: #22211f;
+        --surface-2: #1d1d1b;
+        --surface-3: #2b2925;
+        --muted: #aaa39a;
+        --line: rgba(245, 239, 228, 0.12);
+        --text: #f6efe5;
+        --panel: rgba(31, 31, 29, 0.9);
+        --panel-soft: rgba(35, 34, 31, 0.76);
+        --shadow: 0 18px 48px rgba(0, 0, 0, 0.30);
+      }
+      body {
+        background:
+          linear-gradient(180deg, rgba(23, 23, 22, 0.96), rgba(30, 29, 27, 0.98)),
+          repeating-linear-gradient(90deg, rgba(246, 239, 229, 0.03) 0 1px, transparent 1px 96px);
+      }
+      input:focus, textarea:focus, select:focus { background: #262522; }
+      .stat.primary { background: #f6efe5; color: #1d252c; }
+      .stat.primary .muted { color: rgba(29, 37, 44, 0.68); }
+      .stat.primary .value-pop { color: #1d252c; }
+      .stat:hover, .mini:hover { background: rgba(39, 38, 35, 0.94); }
+      .table-wrap { background: rgba(31, 31, 29, 0.58); }
+      th { background: rgba(43, 41, 37, 0.78); }
+      .endpoint-box { background: rgba(43, 41, 37, 0.54); }
+    }
+    @media (max-width: 1180px) { .stats { grid-template-columns: repeat(4, 1fr); } }
+    @media (max-width: 860px) { .header, .top, .grid.two, .fleet-board, .stats, .filters { grid-template-columns: 1fr 1fr; } .header { align-items: start; } }
+    @media (max-width: 560px) { .header, .top, .grid.two, .fleet-board, .stats, .filters { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -615,8 +713,9 @@ function renderAdminPage(): string {
   <main id="app" class="wrap hidden">
     <div class="header">
       <div>
+        <div class="kicker">Operations console</div>
         <h1>RT Account Router</h1>
-        <p class="muted">只保留多账号轮询。这里按账号维度管理上游池，并展示请求仪表盘。</p>
+        <p class="muted">面向日常值守的账号池控制台：先看整体状态，再处理需要关注的节点。</p>
       </div>
       <div class="actions" style="margin-top:0">
         <button class="secondary" id="reload">刷新</button>
@@ -625,22 +724,23 @@ function renderAdminPage(): string {
     </div>
 
     <section class="stats">
+      <div class="stat primary"><b id="sum-available">0</b><span class="muted">可参与轮询</span></div>
       <div class="stat"><b id="sum-total">0</b><span class="muted">总账号</span></div>
-      <div class="stat"><b id="sum-available">0</b><span class="muted">可参与轮询</span></div>
-      <div class="stat"><b id="sum-action">0</b><span class="muted">需处理</span></div>
+      <div class="stat warn"><b id="sum-action">0</b><span class="muted">需处理</span></div>
       <div class="stat"><b id="sum-enabled">0</b><span class="muted">启用中</span></div>
       <div class="stat"><b id="sum-disabled">0</b><span class="muted">已停用</span></div>
       <div class="stat"><b id="sum-calls">0</b><span class="muted">真实 API 请求</span></div>
-      <div class="stat"><b id="sum-successes">0</b><span class="muted">成功</span></div>
-      <div class="stat"><b id="sum-errors">0</b><span class="muted">失败</span></div>
-      <div class="stat"><b id="sum-success-rate">0%</b><span class="muted">真实成功率</span></div>
+      <div class="stat good"><b id="sum-successes">0</b><span class="muted">成功</span></div>
+      <div class="stat bad"><b id="sum-errors">0</b><span class="muted">失败</span></div>
+      <div class="stat good"><b id="sum-success-rate">0%</b><span class="muted">真实成功率</span></div>
       <div class="stat"><b id="sum-avg">0ms</b><span class="muted">真实均耗时</span></div>
       <div class="stat"><b id="sum-health-checks">0</b><span class="muted">健康检测</span></div>
     </section>
 
     <div class="top">
       <section class="card">
-        <h2 style="margin:0 0 8px;font-size:16px">添加 / 编辑账号</h2>
+        <div class="kicker">Account editor</div>
+        <h2 style="margin:0 0 8px;font-size:18px">添加 / 编辑账号</h2>
         <p class="muted" style="margin:0 0 14px">账号权重越高，被轮询到的比例越高。编辑账号会载入到这里，保存后回到账号池查看状态。</p>
         <div class="grid two">
           <input id="id" placeholder="账号 ID（可留空）" />
@@ -670,7 +770,8 @@ function renderAdminPage(): string {
       </section>
 
       <section class="card">
-        <h2 style="margin:0 0 8px;font-size:16px">控制台</h2>
+        <div class="kicker">Console tools</div>
+        <h2 style="margin:0 0 8px;font-size:18px">控制台</h2>
         <p class="muted" style="margin:0 0 14px">检测只更新账号可用性，不计入真实 API 请求数。代理端点可直接复制到客户端。</p>
         <div class="field">
           <input id="current-token" type="password" disabled />
@@ -692,7 +793,8 @@ function renderAdminPage(): string {
     <section class="card">
       <div class="row">
         <div>
-          <h2 style="margin:0 0 8px;font-size:16px">账号池</h2>
+          <div class="kicker">Node pool</div>
+          <h2 style="margin:0 0 8px;font-size:18px">账号池</h2>
           <p class="muted" style="margin:0">真实调用统计和健康检测状态已分开，账号多时先看筛选后的主表。</p>
         </div>
       </div>
@@ -764,7 +866,7 @@ function renderAdminPage(): string {
     proxyEndpointEl.textContent = window.location.origin + "/v1";
     function setStatus(target, message, isError = false) {
       target.textContent = message || "";
-      target.style.color = isError ? "#ff8f8f" : "#8b96b2";
+      target.style.color = isError ? "var(--danger)" : "var(--muted)";
       target.classList.remove("flash");
       if (message) requestAnimationFrame(() => target.classList.add("flash"));
     }
@@ -936,7 +1038,7 @@ function renderAdminPage(): string {
         return '<tr class="row-' + state + '" style="animation-delay:' + Math.min(240, 24 * visible.indexOf(account)) + 'ms">' +
         '<td><input class="check" type="checkbox" data-account-check="' + escapeHtml(account.id) + '" ' + checked + ' /></td>' +
         '<td><div class="node-title"><b>' + escapeHtml(account.label) + '</b><span class="muted mono">' + escapeHtml(account.id) + '</span><span class="muted mono node-url" title="' + escapeHtml(account.baseUrl) + '">' + escapeHtml(account.baseUrl) + '</span></div></td>' +
-          '<td><div class="meta" style="margin-top:0">' + stateTag(account) + '<span class="tag">权重 ' + (account.weight || 1) + '</span><span class="tag">' + (headers.length ? "额外请求头 " + headers.length : "无额外请求头") + '</span>' + (account.health?.lastStatus ? '<span class="tag">检测状态 ' + account.health.lastStatus + '</span>' : '') + '</div>' + (account.health?.lastError ? '<div class="muted" style="margin-top:8px;color:#ff8f8f">' + escapeHtml(account.health.lastError).slice(0, 120) + '</div>' : '') + '</td>' +
+          '<td><div class="meta" style="margin-top:0">' + stateTag(account) + '<span class="tag">权重 ' + (account.weight || 1) + '</span><span class="tag">' + (headers.length ? "额外请求头 " + headers.length : "无额外请求头") + '</span>' + (account.health?.lastStatus ? '<span class="tag">检测状态 ' + account.health.lastStatus + '</span>' : '') + '</div>' + (account.health?.lastError ? '<div class="muted" style="margin-top:8px;color:var(--danger)">' + escapeHtml(account.health.lastError).slice(0, 120) + '</div>' : '') + '</td>' +
           '<td><div class="mono">' + (account.stats?.calls || 0) + ' 次</div><div class="muted">成功 ' + (account.stats?.successes || 0) + ' / 失败 ' + (account.stats?.errors || 0) + ' / ' + successRate + '</div><div class="muted">均耗时 ' + (account.stats?.avgDurationMs || 0) + 'ms</div></td>' +
           '<td><div class="mono">' + (account.health?.checks || 0) + ' 次</div><div class="muted">' + lastCheck + '</div></td>' +
           '<td><div class="muted">' + lastUsed + '</div></td>' +
