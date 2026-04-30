@@ -465,20 +465,26 @@ function renderMonitorPage(): string {
     }
     .model-empty { padding: 20px 18px; color: var(--muted); }
     .metric-mini { color: var(--muted); font-size: 12px; margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap; }
-    .hour-detail-inline {
-      display: none;
-      margin-top: 8px;
-      padding: 8px 10px;
+    .hour-tooltip {
+      position: fixed;
+      z-index: 20;
       min-width: 190px;
+      max-width: min(280px, calc(100vw - 24px));
+      padding: 10px 12px;
       border: 1px solid var(--line);
       border-radius: 8px;
       color: var(--ink);
-      background: rgba(255, 252, 246, 0.72);
+      background: rgba(255, 252, 246, 0.96);
+      box-shadow: 0 18px 44px rgba(45, 55, 72, 0.18);
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 140ms ease, transform 140ms ease;
       font-size: 12px;
       line-height: 1.6;
     }
-    .hour-detail-inline.show { display: block; }
-    .hour-detail-inline b { display: block; font-size: 13px; margin-bottom: 4px; }
+    .hour-tooltip.show { opacity: 1; transform: translateY(0); }
+    .hour-tooltip b { display: block; font-size: 13px; margin-bottom: 4px; }
     @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes ripple { 0% { opacity: 0.4; transform: scale(0.7); } 70%, 100% { opacity: 0; transform: scale(1.9); } }
     @keyframes breatheOk { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
@@ -554,6 +560,7 @@ function renderMonitorPage(): string {
       <div id="model-list" class="model-table-wrap"><div class="model-empty">正在读取模型列表...</div></div>
     </section>
   </main>
+  <div id="hour-tooltip" class="hour-tooltip"></div>
   <script>
     function fmt(value) {
       const n = Number(value || 0);
@@ -614,7 +621,14 @@ function renderMonitorPage(): string {
           ? time + "｜调用 " + bucket.calls + "｜成功 " + bucket.successes + "｜失败 " + bucket.errors + "｜成功率 " + bucket.successRate + "%｜延迟 " + (bucket.avgDurationMs || 0) + "ms"
           : time + "｜暂无调用";
         return '<i class="hour-cell ' + hourClass(bucket) + '" data-hour-detail="' + escapeHtml(detail) + '"></i>';
-      }).join("") + '</div><div class="hour-detail-inline"></div></div>';
+      }).join("") + '</div></div>';
+    }
+    function scrollHourStripsToLatest() {
+      requestAnimationFrame(() => {
+        document.querySelectorAll(".hour-strip").forEach((strip) => {
+          strip.scrollLeft = strip.scrollWidth;
+        });
+      });
     }
     function renderTabs(models) {
       const tabs = document.getElementById("model-tabs");
@@ -653,6 +667,7 @@ function renderMonitorPage(): string {
             '<div class="model-latency">' + escapeHtml(model.avgDurationMs ? model.avgDurationMs + "ms" : "暂无") + '</div>' +
           '</div>').join("") + '</div>'
         : '<div class="model-empty">暂未配置开放模型。</div>';
+      scrollHourStripsToLatest();
     }
     document.addEventListener("input", (event) => {
       if (event.target?.id === "model-search") renderModels(publicModels);
@@ -666,21 +681,30 @@ function renderMonitorPage(): string {
     function showHourTooltip(target) {
       const detail = target?.getAttribute?.("data-hour-detail");
       if (!detail) return;
-      const tooltip = target.closest(".hour-block")?.querySelector(".hour-detail-inline");
-      if (!tooltip) return;
+      const tooltip = document.getElementById("hour-tooltip");
       const parts = detail.split("｜");
       tooltip.innerHTML = '<b>' + escapeHtml(parts[0] || "") + '</b>' + parts.slice(1).map((item) => '<div>' + escapeHtml(item) + '</div>').join("");
+      tooltip.style.left = "12px";
+      tooltip.style.top = "12px";
       tooltip.classList.add("show");
+      const rect = target.getBoundingClientRect();
+      const rowRect = target.closest(".model-row")?.getBoundingClientRect() || rect;
+      const tipRect = tooltip.getBoundingClientRect();
+      const left = Math.min(window.innerWidth - tipRect.width - 12, Math.max(12, rect.left + rect.width / 2 - tipRect.width / 2));
+      const below = rowRect.bottom + 10;
+      const above = rowRect.top - tipRect.height - 10;
+      const top = below + tipRect.height <= window.innerHeight - 12 ? below : Math.max(12, above);
+      tooltip.style.left = left + "px";
+      tooltip.style.top = top + "px";
     }
-    function hideHourTooltip(target) {
-      const tooltip = target?.closest?.(".hour-block")?.querySelector?.(".hour-detail-inline");
-      tooltip?.classList?.remove("show");
+    function hideHourTooltip() {
+      document.getElementById("hour-tooltip").classList.remove("show");
     }
     document.addEventListener("pointerover", (event) => {
       if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target);
     });
     document.addEventListener("pointerout", (event) => {
-      if (event.target?.matches?.("[data-hour-detail]")) hideHourTooltip(event.target);
+      if (event.target?.matches?.("[data-hour-detail]")) hideHourTooltip();
     });
     document.addEventListener("pointerdown", (event) => {
       if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target);
