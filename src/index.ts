@@ -66,11 +66,16 @@ type RoutingSettings = {
   disableOnFailure: boolean;
 };
 
+type ModelSettings = {
+  models: string[];
+};
+
 const ACCOUNTS_KEY = "accounts";
 const CURSOR_KEY = "cursor";
 const STATS_KEY = "stats";
 const HEALTH_KEY = "health";
 const ROUTING_KEY = "routing";
+const MODELS_KEY = "models";
 
 function normalizeWeight(value: unknown): number {
   const weight = Number(value ?? 1);
@@ -84,6 +89,23 @@ function createDefaultRouting(maxRetryAccounts?: string): RoutingSettings {
     maxRetryAccounts: Number.isFinite(parsed) ? Math.max(1, Math.min(20, Math.round(parsed))) : 3,
     disableOnFailure: true,
   };
+}
+
+function normalizeModelList(value: unknown): string[] {
+  const incoming = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[\n,]+/)
+      : [];
+  const seen = new Set<string>();
+  const models: string[] = [];
+  for (const item of incoming) {
+    const model = String(item ?? "").trim();
+    if (!model || seen.has(model)) continue;
+    seen.add(model);
+    models.push(model);
+  }
+  return models.slice(0, 100);
 }
 
 function isAccountFailureStatus(status: number): boolean {
@@ -256,11 +278,11 @@ function renderMonitorPage(): string {
         repeating-linear-gradient(90deg, rgba(24, 32, 43, 0.035) 0 1px, transparent 1px 88px);
       color: var(--ink);
     }
-    .wrap { width: min(1160px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0 72px; }
+    .wrap { width: min(1080px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0 72px; }
     .masthead {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 280px;
-      gap: 18px;
+      grid-template-columns: minmax(0, 1fr) 180px;
+      gap: 12px;
       align-items: stretch;
       margin-bottom: 18px;
     }
@@ -271,11 +293,11 @@ function renderMonitorPage(): string {
       box-shadow: var(--shadow);
       backdrop-filter: blur(18px);
     }
-    .hero { padding: clamp(24px, 4vw, 42px); display: grid; gap: 14px; }
+    .hero { padding: clamp(22px, 3vw, 34px); display: grid; gap: 14px; }
     .eyebrow { color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
     h1 { margin: 0; max-width: 760px; font-size: clamp(34px, 6vw, 64px); line-height: 0.96; letter-spacing: 0; text-wrap: pretty; }
     p { margin: 0; color: var(--muted); line-height: 1.7; text-wrap: pretty; }
-    .status-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+    .status-line { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin-top: 4px; padding-left: 2px; }
     .dot {
       width: 12px;
       height: 12px;
@@ -299,11 +321,11 @@ function renderMonitorPage(): string {
     .dot.warn::after { animation: ripple 2.8s ease-out infinite; }
     .dot.bad { color: var(--bad); background: var(--bad); box-shadow: 0 0 0 7px rgba(200, 76, 76, 0.14); animation: breatheBad 1.8s ease-in-out infinite; }
     .dot.bad::after { animation: ripple 1.8s ease-out infinite; }
-    .status-tile { padding: 20px; display: flex; align-items: center; min-height: 140px; }
+    .status-tile { padding: 16px; display: flex; align-items: center; min-height: 112px; }
     .status-tile b { display: block; color: var(--ink); font-size: 28px; line-height: 1; margin-bottom: 8px; }
     .grid { display: grid; grid-template-columns: 0.75fr 0.75fr 1.5fr; gap: 12px; margin: 12px 0; }
     .card {
-      padding: 18px;
+      padding: 16px;
       animation: rise 420ms ease-out both;
     }
     .card b { display: block; font-size: clamp(26px, 4vw, 36px); line-height: 1; margin-bottom: 8px; }
@@ -311,6 +333,17 @@ function renderMonitorPage(): string {
     .bar { height: 11px; border-radius: 999px; overflow: hidden; background: rgba(24, 32, 43, 0.09); margin-top: 16px; }
     .bar i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--ok)); transition: width 520ms ease; }
     .footer { color: var(--muted); font-size: 13px; margin-top: 18px; }
+    .model-panel { margin-top: 12px; }
+    .model-panel h2 { margin: 0 0 12px; font-size: 18px; letter-spacing: 0; }
+    .model-list { display: flex; flex-wrap: wrap; gap: 8px; min-height: 34px; }
+    .model-chip {
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      background: rgba(255, 252, 246, 0.58);
+      font: 13px ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
     @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes ripple { 0% { opacity: 0.4; transform: scale(0.7); } 70%, 100% { opacity: 0; transform: scale(1.9); } }
     @keyframes breatheOk { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
@@ -363,6 +396,10 @@ function renderMonitorPage(): string {
         <div class="bar"><i id="success-bar"></i></div>
       </div>
     </section>
+    <section class="card model-panel">
+      <h2>支持的模型</h2>
+      <div id="model-list" class="model-list"><span class="muted">正在读取模型列表...</span></div>
+    </section>
   </main>
   <script>
     function fmt(value) {
@@ -373,6 +410,13 @@ function renderMonitorPage(): string {
     }
     function setText(id, value) {
       document.getElementById(id).textContent = value;
+    }
+    function renderModels(models) {
+      const list = document.getElementById("model-list");
+      const items = Array.isArray(models) ? models : [];
+      list.innerHTML = items.length
+        ? items.map((model) => '<span class="model-chip">' + String(model).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char])) + '</span>').join("")
+        : '<span class="muted">暂未配置开放模型。</span>';
     }
     async function loadStatus() {
       try {
@@ -386,6 +430,7 @@ function renderMonitorPage(): string {
         setText("calls", fmt(summary.calls || 0));
         setText("success-rate", String(summary.successRate || 0) + "%");
         document.getElementById("success-bar").style.width = Math.max(0, Math.min(100, summary.successRate || 0)) + "%";
+        renderModels(data.models || []);
       } catch {
         document.getElementById("state-dot").className = "dot bad";
         setText("state-text", "健康状态读取失败");
@@ -608,6 +653,32 @@ function renderAdminPage(): string {
       background: rgba(236, 230, 220, 0.52);
     }
     .endpoint-box .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .model-editor { margin-top: 12px; }
+    .model-editor textarea { min-height: 118px; }
+    .model-picker {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+      max-height: 220px;
+      overflow: auto;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(236, 230, 220, 0.38);
+    }
+    .model-option {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      color: var(--text);
+    }
+    .model-option code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .model-option small { color: var(--muted); white-space: nowrap; }
     .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
     .meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
     .tag {
@@ -780,6 +851,18 @@ function renderAdminPage(): string {
           <span class="mono muted" id="proxy-endpoint">/v1</span>
           <button class="secondary" id="copy-endpoint">复制端点</button>
         </div>
+        <div class="model-editor">
+          <textarea id="open-models" placeholder="开放模型，一行一个，例如&#10;gpt-4.1-mini&#10;gpt-4o-mini"></textarea>
+          <div class="grid two" style="margin-top:10px">
+            <input id="model-discovery-limit" type="number" min="1" max="50" step="1" value="8" placeholder="推荐扫描节点数，默认 8" />
+          </div>
+          <div class="actions">
+            <button class="secondary" id="discover-models">系统推荐模型</button>
+            <button class="secondary" id="apply-discovered-models">使用选中模型</button>
+            <button class="secondary" id="save-models">保存开放模型</button>
+          </div>
+          <div id="discovered-models" class="model-picker hidden"></div>
+        </div>
         <div class="actions">
           <button class="secondary" id="export-accounts">导出</button>
           <button class="secondary" id="import-accounts">导入</button>
@@ -852,6 +935,9 @@ function renderAdminPage(): string {
     const tokenInput = document.getElementById("token");
     const currentTokenInput = document.getElementById("current-token");
     const apiTestModelInput = document.getElementById("api-test-model");
+    const openModelsInput = document.getElementById("open-models");
+    const modelDiscoveryLimitInput = document.getElementById("model-discovery-limit");
+    const discoveredModelsEl = document.getElementById("discovered-models");
     const searchInput = document.getElementById("account-search");
     const statusFilterInput = document.getElementById("status-filter");
     const sortModeInput = document.getElementById("sort-mode");
@@ -967,6 +1053,7 @@ function renderAdminPage(): string {
         setStatus(metaStatusEl, "验证通过。需要确认可用性时可手动点击全部检测。");
         await loadAccounts();
         await loadRouting();
+        await loadModels();
       } catch (error) {
         setStatus(gateStatusEl, error.message, true);
       }
@@ -1103,6 +1190,79 @@ function renderAdminPage(): string {
       } finally {
         setBusy("save-routing", false);
       }
+    }
+    async function loadModels() {
+      try {
+        const data = await api("/admin/models");
+        openModelsInput.value = (data.models || []).join("\\n");
+      } catch (error) {
+        setStatus(metaStatusEl, error.message, true);
+      }
+    }
+    async function saveModels() {
+      try {
+        setBusy("save-models", true);
+        const models = openModelsInput.value.split(/[\\n,]+/).map((item) => item.trim()).filter(Boolean);
+        const data = await api("/admin/models", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ models }),
+        });
+        openModelsInput.value = (data.models || []).join("\\n");
+        setStatus(metaStatusEl, "开放模型已保存，共 " + (data.models || []).length + " 个。");
+      } catch (error) {
+        setStatus(metaStatusEl, error.message, true);
+      } finally {
+        setBusy("save-models", false);
+      }
+    }
+    function renderDiscoveredModels(recommendations) {
+      const items = Array.isArray(recommendations) ? recommendations : [];
+      discoveredModelsEl.classList.remove("hidden");
+      if (!items.length) {
+        discoveredModelsEl.innerHTML = '<span class="muted">没有从启用节点读取到模型。</span>';
+        return;
+      }
+      const current = new Set(openModelsInput.value.split(/[\\n,]+/).map((item) => item.trim()).filter(Boolean));
+      discoveredModelsEl.innerHTML = items.map((item) => {
+        const checked = current.has(item.model) ? "checked" : "";
+        const labels = (item.accounts || []).join(", ");
+        return '<label class="model-option" title="' + escapeHtml(labels) + '">' +
+          '<input class="check" type="checkbox" data-discovered-model="' + escapeHtml(item.model) + '" ' + checked + ' />' +
+          '<code>' + escapeHtml(item.model) + '</code>' +
+          '<small>' + (item.accounts?.length || 0) + ' 个节点</small>' +
+        '</label>';
+      }).join("");
+    }
+    async function discoverModels() {
+      try {
+        setBusy("discover-models", true);
+        const limit = Math.max(1, Math.min(50, Number(modelDiscoveryLimitInput.value || 8)));
+        modelDiscoveryLimitInput.value = String(limit);
+        setStatus(metaStatusEl, "正在从最多 " + limit + " 个候选节点读取模型列表...");
+        const data = await api("/admin/models/discover", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ limit }),
+        });
+        renderDiscoveredModels(data.recommendations || []);
+        setStatus(metaStatusEl, "模型读取完成：" + (data.recommendations || []).length + " 个候选，" + (data.okCount || 0) + "/" + (data.scanned || data.total || 0) + " 个扫描节点成功，已跳过 " + (data.skipped || 0) + " 个。");
+      } catch (error) {
+        setStatus(metaStatusEl, error.message, true);
+      } finally {
+        setBusy("discover-models", false);
+      }
+    }
+    function applyDiscoveredModels() {
+      const selected = [...discoveredModelsEl.querySelectorAll("[data-discovered-model]:checked")]
+        .map((input) => input.getAttribute("data-discovered-model"))
+        .filter(Boolean);
+      if (!selected.length) {
+        setStatus(metaStatusEl, "先选择要开放的模型。", true);
+        return;
+      }
+      openModelsInput.value = selected.join("\\n");
+      setStatus(metaStatusEl, "已填入 " + selected.length + " 个模型，确认后点击保存开放模型。");
     }
     async function copyEndpoint() {
       const endpoint = window.location.origin + "/v1";
@@ -1283,6 +1443,9 @@ function renderAdminPage(): string {
     });
     document.getElementById("add-account").addEventListener("click", addAccount);
     document.getElementById("save-routing").addEventListener("click", saveRouting);
+    document.getElementById("discover-models").addEventListener("click", discoverModels);
+    document.getElementById("apply-discovered-models").addEventListener("click", applyDiscoveredModels);
+    document.getElementById("save-models").addEventListener("click", saveModels);
     document.getElementById("reload").addEventListener("click", loadAccounts);
     document.getElementById("clear-form").addEventListener("click", clearForm);
     document.getElementById("test-all").addEventListener("click", probeAllAccounts);
@@ -1357,6 +1520,7 @@ export class RouterState extends DurableObject<Env> {
   private statsCache: Record<string, AccountStat> | null = null;
   private healthCache: Record<string, AccountHealth> | null = null;
   private routingCache: RoutingSettings | null = null;
+  private modelsCache: ModelSettings | null = null;
 
   private async getAccounts(): Promise<AccountRecord[]> {
     if (this.accountsCache) return this.accountsCache;
@@ -1412,6 +1576,22 @@ export class RouterState extends DurableObject<Env> {
       disableOnFailure: settings.disableOnFailure === true,
     };
     await this.ctx.storage.put(ROUTING_KEY, this.routingCache);
+  }
+
+  private async getModelSettings(): Promise<ModelSettings> {
+    if (this.modelsCache) return this.modelsCache;
+    const saved = await this.ctx.storage.get<Partial<ModelSettings>>(MODELS_KEY);
+    this.modelsCache = {
+      models: normalizeModelList(saved?.models),
+    };
+    return this.modelsCache;
+  }
+
+  private async saveModelSettings(settings: ModelSettings): Promise<void> {
+    this.modelsCache = {
+      models: normalizeModelList(settings.models),
+    };
+    await this.ctx.storage.put(MODELS_KEY, this.modelsCache);
   }
 
   private async getCursor(): Promise<number> {
@@ -1531,6 +1711,45 @@ export class RouterState extends DurableObject<Env> {
     }
   }
 
+  private async discoverAccountModels(account: AccountRecord): Promise<{
+    accountId: string;
+    label: string;
+    ok: boolean;
+    status?: number;
+    models: string[];
+    error?: string;
+  }> {
+    try {
+      const response = await fetch(`${account.baseUrl}/v1/models`, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${account.apiKey}`,
+          ...(account.extraHeaders ?? {}),
+        },
+      });
+      if (!response.ok) {
+        await this.markUnhealthy(account.id);
+        await this.recordHealthResult(account.id, false, response.status, "health", `HTTP ${response.status}`);
+        return { accountId: account.id, label: account.label, ok: false, status: response.status, models: [], error: `HTTP ${response.status}` };
+      }
+      const data = await response.json().catch(() => ({}));
+      const rawModels = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.data)
+          ? data.data.map((item: { id?: unknown }) => item?.id)
+          : [];
+      const models = normalizeModelList(rawModels);
+      await this.markHealthy(account.id);
+      await this.recordHealthResult(account.id, true, response.status, "health");
+      return { accountId: account.id, label: account.label, ok: true, status: response.status, models };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.markUnhealthy(account.id);
+      await this.recordHealthResult(account.id, false, null, "health", message);
+      return { accountId: account.id, label: account.label, ok: false, models: [], error: message };
+    }
+  }
+
   private async apiTestAccount(account: AccountRecord, model: string): Promise<{ ok: boolean; status?: number; message: string }> {
     try {
       const response = await fetch(`${account.baseUrl}/v1/chat/completions`, {
@@ -1597,9 +1816,34 @@ export class RouterState extends DurableObject<Env> {
     if (!requestUrl.pathname.startsWith("/v1/")) {
       return json({ error: "Only /v1/* routes are supported" }, { status: 404 });
     }
+    const modelSettings = await this.getModelSettings();
+    if (request.method === "GET" && requestUrl.pathname === "/v1/models" && modelSettings.models.length > 0) {
+      return json({
+        object: "list",
+        data: modelSettings.models.map((id) => ({ id, object: "model", owned_by: "rt-cf" })),
+      });
+    }
     const requestBody = request.method === "GET" || request.method === "HEAD"
       ? undefined
       : await request.arrayBuffer();
+    if (requestBody && (requestUrl.pathname === "/v1/chat/completions" || requestUrl.pathname === "/v1/responses")) {
+      if (modelSettings.models.length > 0) {
+        let payload: { model?: string };
+        try {
+          payload = JSON.parse(new TextDecoder().decode(requestBody)) as { model?: string };
+        } catch {
+          return json({ error: "Invalid JSON body" }, { status: 400 });
+        }
+        const requestedModel = typeof payload.model === "string" ? payload.model.trim() : "";
+        if (!requestedModel || !modelSettings.models.includes(requestedModel)) {
+          return json({
+            error: "Model is not enabled",
+            model: requestedModel || null,
+            allowedModels: modelSettings.models,
+          }, { status: 403 });
+        }
+      }
+    }
     const excluded = new Set<string>();
     const routing = await this.getRoutingSettings();
     const enabledCount = (await this.getAccounts()).filter((item) => item.enabled).length;
@@ -1767,6 +2011,77 @@ export class RouterState extends DurableObject<Env> {
       return json({ ok: true, routing: next });
     }
 
+    if (pathname === "/admin/models" && request.method === "GET") {
+      const settings = await this.getModelSettings();
+      return json({ models: settings.models });
+    }
+
+    if (pathname === "/admin/models" && request.method === "PATCH") {
+      const payload = await readJsonBody<Partial<ModelSettings>>(request);
+      const next = { models: normalizeModelList(payload.models) };
+      await this.saveModelSettings(next);
+      return json({ ok: true, models: next.models });
+    }
+
+    if (pathname === "/admin/models/discover" && request.method === "POST") {
+      let payload: { limit?: number } = {};
+      if (request.headers.get("content-type")?.includes("application/json")) {
+        payload = await readJsonBody<{ limit?: number }>(request);
+      }
+      const limit = Math.max(1, Math.min(50, Math.round(Number(payload.limit || 8))));
+      const [accounts, statsMap, healthMap] = await Promise.all([
+        this.getAccounts(),
+        this.getStatsMap(),
+        this.getHealthMap(),
+      ]);
+      const enabled = accounts
+        .filter((account) => account.enabled)
+        .sort((a, b) => {
+          const aHealth = healthMap[a.id] ?? createEmptyHealth();
+          const bHealth = healthMap[b.id] ?? createEmptyHealth();
+          const aHealthy = (a.unhealthyUntil ?? 0) <= Date.now() && aHealth.lastOk !== false ? 0 : 1;
+          const bHealthy = (b.unhealthyUntil ?? 0) <= Date.now() && bHealth.lastOk !== false ? 0 : 1;
+          if (aHealthy !== bHealthy) return aHealthy - bHealthy;
+          return (statsMap[b.id]?.calls || 0) - (statsMap[a.id]?.calls || 0)
+            || normalizeWeight(b.weight) - normalizeWeight(a.weight)
+            || a.label.localeCompare(b.label);
+        });
+      const seenBaseUrl = new Set<string>();
+      const primary: AccountRecord[] = [];
+      const remaining: AccountRecord[] = [];
+      for (const account of enabled) {
+        if (seenBaseUrl.has(account.baseUrl)) remaining.push(account);
+        else {
+          seenBaseUrl.add(account.baseUrl);
+          primary.push(account);
+        }
+      }
+      const targets = [...primary, ...remaining].slice(0, limit);
+      const results = await Promise.all(targets.map((account) => this.discoverAccountModels(account)));
+      const modelMap = new Map<string, string[]>();
+      for (const result of results) {
+        if (!result.ok) continue;
+        for (const model of result.models) {
+          const labels = modelMap.get(model) ?? [];
+          labels.push(result.label);
+          modelMap.set(model, labels);
+        }
+      }
+      const recommendations = [...modelMap.entries()]
+        .map(([model, labels]) => ({ model, accounts: labels.sort((a, b) => a.localeCompare(b)) }))
+        .sort((a, b) => b.accounts.length - a.accounts.length || a.model.localeCompare(b.model));
+      return json({
+        ok: results.some((item) => item.ok),
+        total: enabled.length,
+        scanned: targets.length,
+        skipped: Math.max(0, enabled.length - targets.length),
+        limit,
+        okCount: results.filter((item) => item.ok).length,
+        recommendations,
+        results,
+      });
+    }
+
     if (pathname === "/admin/accounts/test-all" && request.method === "POST") {
       const accounts = await this.getAccounts();
       const targets = accounts.filter((account) => account.enabled);
@@ -1839,10 +2154,11 @@ export class RouterState extends DurableObject<Env> {
   }
 
   private async handlePublicStatus(): Promise<Response> {
-    const [accounts, statsMap, healthMap] = await Promise.all([
+    const [accounts, statsMap, healthMap, modelSettings] = await Promise.all([
       this.getAccounts(),
       this.getStatsMap(),
       this.getHealthMap(),
+      this.getModelSettings(),
     ]);
     const summary = summarizeAccounts(accounts, statsMap, healthMap);
     const state = summary.enabled === 0 || summary.available === 0
@@ -1861,6 +2177,7 @@ export class RouterState extends DurableObject<Env> {
       state,
       message,
       generatedAt: Date.now(),
+      models: modelSettings.models,
       summary: {
         total: summary.total,
         enabled: summary.enabled,
