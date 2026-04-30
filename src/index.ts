@@ -353,16 +353,16 @@ function renderMonitorPage(): string {
     .dot.warn::after { animation: ripple 2.8s ease-out infinite; }
     .dot.bad { color: var(--bad); background: var(--bad); box-shadow: 0 0 0 7px rgba(200, 76, 76, 0.14); animation: breatheBad 1.8s ease-in-out infinite; }
     .dot.bad::after { animation: ripple 1.8s ease-out infinite; }
-    .status-tile { padding: 16px; display: flex; align-items: center; min-height: 112px; }
-    .status-tile b { display: block; color: var(--ink); font-size: 28px; line-height: 1; margin-bottom: 8px; }
-    .grid { display: grid; grid-template-columns: 0.75fr 0.75fr 1.5fr; gap: 12px; margin: 12px 0; }
+    .status-tile { padding: 14px; display: flex; align-items: center; min-height: 96px; }
+    .status-tile b { display: block; color: var(--ink); font-size: 26px; line-height: 1; margin-bottom: 6px; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0; }
     .card {
-      padding: 16px;
+      padding: 14px;
       animation: rise 420ms ease-out both;
     }
-    .card b { display: block; font-size: clamp(26px, 4vw, 36px); line-height: 1; margin-bottom: 8px; }
+    .card b { display: block; font-size: clamp(24px, 3vw, 32px); line-height: 1; margin-bottom: 6px; }
     .card span { color: var(--muted); font-size: 13px; }
-    .bar { height: 11px; border-radius: 999px; overflow: hidden; background: rgba(24, 32, 43, 0.09); margin-top: 16px; }
+    .bar { height: 9px; border-radius: 999px; overflow: hidden; background: rgba(24, 32, 43, 0.09); margin-top: 12px; }
     .bar i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--ok)); transition: width 520ms ease; }
     .footer { color: var(--muted); font-size: 13px; margin-top: 18px; }
     .model-panel { margin-top: 12px; padding: 0; overflow: hidden; }
@@ -397,20 +397,30 @@ function renderMonitorPage(): string {
       box-shadow: none;
     }
     .model-tab.active { color: var(--accent); border-color: rgba(45, 98, 214, 0.34); background: rgba(45, 98, 214, 0.08); }
-    .model-table-wrap { overflow-x: auto; }
-    .model-table { width: 100%; min-width: 980px; border-collapse: collapse; }
-    .model-table th, .model-table td { padding: 13px 18px; border-bottom: 1px solid var(--line); text-align: left; font-size: 13px; }
-    .model-table th { color: var(--muted); font-size: 12px; font-weight: 700; background: rgba(255, 252, 246, 0.42); }
-    .model-table tr:last-child td { border-bottom: 0; }
+    .model-table-wrap { overflow: visible; }
+    .model-table { display: grid; }
+    .model-row {
+      display: grid;
+      grid-template-columns: minmax(150px, 1.1fr) minmax(90px, 0.55fr) minmax(72px, 0.45fr) minmax(312px, 1.5fr) minmax(86px, 0.45fr);
+      gap: 12px;
+      align-items: center;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line);
+      font-size: 13px;
+    }
+    .model-row.head { color: var(--muted); font-size: 12px; font-weight: 700; background: rgba(255, 252, 246, 0.42); }
+    .model-row:last-child { border-bottom: 0; }
     .model-name { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .model-provider, .model-endpoint, .model-latency { color: var(--muted); }
-    .hour-strip { display: grid; grid-template-columns: repeat(24, 10px); gap: 3px; align-items: center; }
+    .model-provider, .model-latency { color: var(--muted); }
+    .hour-strip { display: grid; grid-template-columns: repeat(24, 10px); gap: 3px; align-items: center; width: max-content; max-width: 100%; position: relative; }
     .hour-cell {
       width: 10px;
-      height: 16px;
+      height: 18px;
       border-radius: 2px;
       background: rgba(109, 117, 128, 0.18);
       border: 1px solid rgba(109, 117, 128, 0.16);
+      cursor: help;
+      position: relative;
     }
     .hour-cell.good { background: rgba(19, 143, 115, 0.72); border-color: rgba(19, 143, 115, 0.42); }
     .hour-cell.warn { background: rgba(182, 107, 24, 0.62); border-color: rgba(182, 107, 24, 0.38); }
@@ -435,6 +445,27 @@ function renderMonitorPage(): string {
       box-shadow: 0 0 0 4px rgba(19, 143, 115, 0.10);
     }
     .model-empty { padding: 20px 18px; color: var(--muted); }
+    .metric-mini { color: var(--muted); font-size: 12px; margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .hour-tooltip {
+      position: fixed;
+      z-index: 20;
+      min-width: 190px;
+      max-width: 260px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--ink);
+      background: rgba(255, 252, 246, 0.96);
+      box-shadow: 0 18px 44px rgba(45, 55, 72, 0.18);
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 140ms ease, transform 140ms ease;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .hour-tooltip.show { opacity: 1; transform: translateY(0); }
+    .hour-tooltip b { display: block; font-size: 13px; margin-bottom: 4px; }
     @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes ripple { 0% { opacity: 0.4; transform: scale(0.7); } 70%, 100% { opacity: 0; transform: scale(1.9); } }
     @keyframes breatheOk { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
@@ -460,6 +491,12 @@ function renderMonitorPage(): string {
     }
     @media (max-width: 820px) { .masthead { grid-template-columns: 1fr; } .grid { grid-template-columns: 1fr 1fr; } }
     @media (max-width: 640px) { .model-head { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) {
+      .model-row { grid-template-columns: 1fr; gap: 8px; }
+      .model-row.head { display: none; }
+      .hour-strip { grid-template-columns: repeat(24, minmax(8px, 1fr)); width: 100%; }
+      .hour-cell { width: 100%; }
+    }
     @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -482,6 +519,8 @@ function renderMonitorPage(): string {
     <section class="grid">
       <div class="card"><b id="available">0</b><span>可用账号</span></div>
       <div class="card"><b id="calls">0</b><span>调用次数</span></div>
+      <div class="card"><b id="successes">0</b><span>成功次数</span></div>
+      <div class="card"><b id="errors">0</b><span>失败次数</span></div>
       <div class="card">
         <b id="success-rate">0%</b>
         <span>真实请求成功率</span>
@@ -502,6 +541,7 @@ function renderMonitorPage(): string {
       <div id="model-list" class="model-table-wrap"><div class="model-empty">正在读取模型列表...</div></div>
     </section>
   </main>
+  <div id="hour-tooltip" class="hour-tooltip"></div>
   <script>
     function fmt(value) {
       const n = Number(value || 0);
@@ -551,10 +591,10 @@ function renderMonitorPage(): string {
     function renderHours(model) {
       const buckets = Array.isArray(model?.hours) ? model.hours : [];
       return '<div class="hour-strip" aria-label="最近 24 小时调用状态">' + buckets.map((bucket) => {
-        const title = bucket?.calls
-          ? bucket.label + " 调用 " + bucket.calls + " 次，成功率 " + bucket.successRate + "%"
-          : bucket.label + " 暂无调用";
-        return '<i class="hour-cell ' + hourClass(bucket) + '" title="' + escapeHtml(title) + '"></i>';
+        const detail = bucket?.calls
+          ? bucket.label + "｜调用 " + bucket.calls + "｜成功 " + bucket.successes + "｜失败 " + bucket.errors + "｜成功率 " + bucket.successRate + "%｜延迟 " + (bucket.avgDurationMs || 0) + "ms"
+          : bucket.label + "｜暂无调用";
+        return '<i class="hour-cell ' + hourClass(bucket) + '" data-hour-detail="' + escapeHtml(detail) + '"></i>';
       }).join("") + '</div>';
     }
     function renderTabs(models) {
@@ -585,15 +625,14 @@ function renderMonitorPage(): string {
         ? "共 " + publicModels.length + " 个模型，当前显示 " + items.length + " 个。"
         : "暂未配置开放模型。";
       list.innerHTML = items.length
-        ? '<table class="model-table"><thead><tr><th>模型名称</th><th>供应商</th><th>服务可用性</th><th>24 小时调用</th><th>接口端点</th><th>响应时间</th></tr></thead><tbody>' +
-          items.map((model) => '<tr>' +
-            '<td><div class="model-name" title="' + escapeHtml(modelName(model)) + '">' + escapeHtml(modelName(model)) + '</div></td>' +
-            '<td class="model-provider">' + escapeHtml(modelFamily(model)) + '</td>' +
-            '<td><span class="model-badge">可用</span></td>' +
-            '<td>' + renderHours(model) + '</td>' +
-            '<td class="model-endpoint">' + escapeHtml(modelEndpoint(model)) + '</td>' +
-            '<td class="model-latency">' + escapeHtml(model.avgDurationMs ? model.avgDurationMs + "ms" : "暂无") + '</td>' +
-          '</tr>').join("") + '</tbody></table>'
+        ? '<div class="model-table"><div class="model-row head"><span>模型名称</span><span>供应商</span><span>状态</span><span>最近 24 小时</span><span>延迟</span></div>' +
+          items.map((model) => '<div class="model-row">' +
+            '<div><div class="model-name" title="' + escapeHtml(modelName(model)) + '">' + escapeHtml(modelName(model)) + '</div><div class="metric-mini"><span>' + escapeHtml(modelEndpoint(model)) + '</span></div></div>' +
+            '<div class="model-provider">' + escapeHtml(modelFamily(model)) + '</div>' +
+            '<div><span class="model-badge">可用</span></div>' +
+            '<div>' + renderHours(model) + '</div>' +
+            '<div class="model-latency">' + escapeHtml(model.avgDurationMs ? model.avgDurationMs + "ms" : "暂无") + '</div>' +
+          '</div>').join("") + '</div>'
         : '<div class="model-empty">暂未配置开放模型。</div>';
     }
     document.addEventListener("input", (event) => {
@@ -605,6 +644,31 @@ function renderMonitorPage(): string {
       activeFamily = family;
       renderModels(publicModels);
     });
+    function showHourTooltip(target, clientX, clientY) {
+      const detail = target?.getAttribute?.("data-hour-detail");
+      if (!detail) return;
+      const tooltip = document.getElementById("hour-tooltip");
+      const parts = detail.split("｜");
+      tooltip.innerHTML = '<b>' + escapeHtml(parts[0] || "") + '</b>' + parts.slice(1).map((item) => '<div>' + escapeHtml(item) + '</div>').join("");
+      tooltip.style.left = Math.min(window.innerWidth - 280, clientX + 12) + "px";
+      tooltip.style.top = Math.max(12, clientY - 12) + "px";
+      tooltip.classList.add("show");
+    }
+    function hideHourTooltip() {
+      document.getElementById("hour-tooltip").classList.remove("show");
+    }
+    document.addEventListener("pointerover", (event) => {
+      if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target, event.clientX, event.clientY);
+    });
+    document.addEventListener("pointermove", (event) => {
+      if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target, event.clientX, event.clientY);
+    });
+    document.addEventListener("pointerout", (event) => {
+      if (event.target?.matches?.("[data-hour-detail]")) hideHourTooltip();
+    });
+    document.addEventListener("pointerdown", (event) => {
+      if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target, event.clientX, event.clientY);
+    });
     async function loadStatus() {
       try {
         const response = await fetch("/public/status", { cache: "no-store" });
@@ -615,6 +679,8 @@ function renderMonitorPage(): string {
         setText("state-text", data.message || "状态未知");
         setText("available", summary.available || 0);
         setText("calls", fmt(summary.calls || 0));
+        setText("successes", fmt(summary.successes || 0));
+        setText("errors", fmt(summary.errors || 0));
         setText("success-rate", String(summary.successRate || 0) + "%");
         document.getElementById("success-bar").style.width = Math.max(0, Math.min(100, summary.successRate || 0)) + "%";
         renderModels(data.modelHealth || (data.models || []).map((model) => ({ model, hours: [] })));
