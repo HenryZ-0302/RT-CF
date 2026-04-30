@@ -70,12 +70,24 @@ type ModelSettings = {
   models: string[];
 };
 
+type ModelHourlyBucket = {
+  calls: number;
+  successes: number;
+  errors: number;
+  avgDurationMs: number;
+  totalDurationMs: number;
+  lastStatus: number | null;
+};
+
+type ModelHourlyStats = Record<string, Record<string, ModelHourlyBucket>>;
+
 const ACCOUNTS_KEY = "accounts";
 const CURSOR_KEY = "cursor";
 const STATS_KEY = "stats";
 const HEALTH_KEY = "health";
 const ROUTING_KEY = "routing";
 const MODELS_KEY = "models";
+const MODEL_HOURLY_KEY = "model_hourly";
 
 function normalizeWeight(value: unknown): number {
   const weight = Number(value ?? 1);
@@ -106,6 +118,26 @@ function normalizeModelList(value: unknown): string[] {
     models.push(model);
   }
   return models.slice(0, 100);
+}
+
+function createEmptyModelBucket(): ModelHourlyBucket {
+  return {
+    calls: 0,
+    successes: 0,
+    errors: 0,
+    avgDurationMs: 0,
+    totalDurationMs: 0,
+    lastStatus: null,
+  };
+}
+
+function hourKey(timestamp = Date.now()): string {
+  return new Date(Math.floor(timestamp / 3600000) * 3600000).toISOString();
+}
+
+function lastHourKeys(count = 24): string[] {
+  const current = Math.floor(Date.now() / 3600000) * 3600000;
+  return Array.from({ length: count }, (_, index) => new Date(current - (count - 1 - index) * 3600000).toISOString());
 }
 
 function isAccountFailureStatus(status: number): boolean {
@@ -333,17 +365,76 @@ function renderMonitorPage(): string {
     .bar { height: 11px; border-radius: 999px; overflow: hidden; background: rgba(24, 32, 43, 0.09); margin-top: 16px; }
     .bar i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--ok)); transition: width 520ms ease; }
     .footer { color: var(--muted); font-size: 13px; margin-top: 18px; }
-    .model-panel { margin-top: 12px; }
-    .model-panel h2 { margin: 0 0 12px; font-size: 18px; letter-spacing: 0; }
-    .model-list { display: flex; flex-wrap: wrap; gap: 8px; min-height: 34px; }
-    .model-chip {
-      padding: 7px 10px;
+    .model-panel { margin-top: 12px; padding: 0; overflow: hidden; }
+    .model-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+      gap: 12px;
+      align-items: end;
+      padding: 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .model-panel h2 { margin: 0 0 6px; font-size: 20px; letter-spacing: 0; }
+    .model-tools { display: grid; gap: 8px; }
+    .model-search {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: var(--ink);
+      background: rgba(255, 252, 246, 0.72);
+      font: inherit;
+    }
+    .model-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+    .model-tab {
       border: 1px solid var(--line);
       border-radius: 999px;
-      color: var(--ink);
-      background: rgba(255, 252, 246, 0.58);
-      font: 13px ui-monospace, SFMono-Regular, Menlo, monospace;
+      padding: 7px 11px;
+      color: var(--muted);
+      background: rgba(255, 252, 246, 0.56);
+      cursor: pointer;
+      font: inherit;
+      box-shadow: none;
     }
+    .model-tab.active { color: var(--accent); border-color: rgba(45, 98, 214, 0.34); background: rgba(45, 98, 214, 0.08); }
+    .model-table-wrap { overflow-x: auto; }
+    .model-table { width: 100%; min-width: 980px; border-collapse: collapse; }
+    .model-table th, .model-table td { padding: 13px 18px; border-bottom: 1px solid var(--line); text-align: left; font-size: 13px; }
+    .model-table th { color: var(--muted); font-size: 12px; font-weight: 700; background: rgba(255, 252, 246, 0.42); }
+    .model-table tr:last-child td { border-bottom: 0; }
+    .model-name { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .model-provider, .model-endpoint, .model-latency { color: var(--muted); }
+    .hour-strip { display: grid; grid-template-columns: repeat(24, 10px); gap: 3px; align-items: center; }
+    .hour-cell {
+      width: 10px;
+      height: 16px;
+      border-radius: 2px;
+      background: rgba(109, 117, 128, 0.18);
+      border: 1px solid rgba(109, 117, 128, 0.16);
+    }
+    .hour-cell.good { background: rgba(19, 143, 115, 0.72); border-color: rgba(19, 143, 115, 0.42); }
+    .hour-cell.warn { background: rgba(182, 107, 24, 0.62); border-color: rgba(182, 107, 24, 0.38); }
+    .hour-cell.bad { background: rgba(200, 76, 76, 0.70); border-color: rgba(200, 76, 76, 0.42); }
+    .model-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 9px;
+      border: 1px solid rgba(19, 143, 115, 0.22);
+      border-radius: 999px;
+      color: var(--ok);
+      background: rgba(19, 143, 115, 0.08);
+      white-space: nowrap;
+    }
+    .model-badge::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 0 4px rgba(19, 143, 115, 0.10);
+    }
+    .model-empty { padding: 20px 18px; color: var(--muted); }
     @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes ripple { 0% { opacity: 0.4; transform: scale(0.7); } 70%, 100% { opacity: 0; transform: scale(1.9); } }
     @keyframes breatheOk { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
@@ -368,6 +459,7 @@ function renderMonitorPage(): string {
       }
     }
     @media (max-width: 820px) { .masthead { grid-template-columns: 1fr; } .grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 640px) { .model-head { grid-template-columns: 1fr; } }
     @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -397,8 +489,17 @@ function renderMonitorPage(): string {
       </div>
     </section>
     <section class="card model-panel">
-      <h2>支持的模型</h2>
-      <div id="model-list" class="model-list"><span class="muted">正在读取模型列表...</span></div>
+      <div class="model-head">
+        <div>
+          <h2>模型健康度</h2>
+          <p id="model-summary">正在读取模型列表...</p>
+        </div>
+        <div class="model-tools">
+          <input id="model-search" class="model-search" placeholder="搜索模型" />
+        </div>
+      </div>
+      <div id="model-tabs" class="model-tabs"></div>
+      <div id="model-list" class="model-table-wrap"><div class="model-empty">正在读取模型列表...</div></div>
     </section>
   </main>
   <script>
@@ -411,13 +512,99 @@ function renderMonitorPage(): string {
     function setText(id, value) {
       document.getElementById(id).textContent = value;
     }
-    function renderModels(models) {
-      const list = document.getElementById("model-list");
-      const items = Array.isArray(models) ? models : [];
-      list.innerHTML = items.length
-        ? items.map((model) => '<span class="model-chip">' + String(model).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char])) + '</span>').join("")
-        : '<span class="muted">暂未配置开放模型。</span>';
+    let publicModels = [];
+    let activeFamily = "all";
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
     }
+    function modelName(model) {
+      return typeof model === "string" ? model : String(model?.model || "");
+    }
+    function modelFamily(model) {
+      const name = modelName(model).toLowerCase();
+      if (name.includes("claude")) return "Anthropic";
+      if (name.includes("gemini") || name.includes("gemma")) return "Gemini";
+      if (name.includes("deepseek")) return "DeepSeek";
+      if (name.includes("qwen")) return "Qwen";
+      if (name.includes("gpt") || name.includes("dall-e") || name.includes("whisper") || name.includes("tts")) return "OpenAI";
+      if (name.includes("grok")) return "xAI";
+      if (name.includes("llama")) return "Llama";
+      if (name.includes("mistral") || name.includes("codestral")) return "Mistral";
+      if (name.includes("doubao")) return "Doubao";
+      return "Model";
+    }
+    function modelEndpoint(model) {
+      const name = modelName(model).toLowerCase();
+      if (name.includes("embedding") || name.includes("embed")) return "/v1/embeddings";
+      if (name.includes("whisper") || name.includes("transcrib")) return "/v1/audio";
+      if (name.includes("tts") || name.includes("speech")) return "/v1/audio/speech";
+      if (name.includes("dall-e") || name.includes("image") || name.includes("imagen")) return "/v1/images";
+      return "/v1/chat/completions";
+    }
+    function hourClass(bucket) {
+      if (!bucket || !bucket.calls) return "";
+      const rate = bucket.successRate ?? (bucket.successes && bucket.calls ? Math.round((bucket.successes / bucket.calls) * 100) : 0);
+      if (rate >= 95) return "good";
+      if (rate >= 60) return "warn";
+      return "bad";
+    }
+    function renderHours(model) {
+      const buckets = Array.isArray(model?.hours) ? model.hours : [];
+      return '<div class="hour-strip" aria-label="最近 24 小时调用状态">' + buckets.map((bucket) => {
+        const title = bucket?.calls
+          ? bucket.label + " 调用 " + bucket.calls + " 次，成功率 " + bucket.successRate + "%"
+          : bucket.label + " 暂无调用";
+        return '<i class="hour-cell ' + hourClass(bucket) + '" title="' + escapeHtml(title) + '"></i>';
+      }).join("") + '</div>';
+    }
+    function renderTabs(models) {
+      const tabs = document.getElementById("model-tabs");
+      const counts = new Map([["all", models.length]]);
+      for (const model of models) {
+        const family = modelFamily(model);
+        counts.set(family, (counts.get(family) || 0) + 1);
+      }
+      const ordered = ["all", ...[...counts.keys()].filter((item) => item !== "all").sort((a, b) => a.localeCompare(b))];
+      tabs.innerHTML = ordered.map((family) => {
+        const label = family === "all" ? "全部模型" : family;
+        const active = family === activeFamily ? " active" : "";
+        return '<button class="model-tab' + active + '" data-model-family="' + escapeHtml(family) + '">' + escapeHtml(label) + ' · ' + (counts.get(family) || 0) + '</button>';
+      }).join("");
+    }
+    function renderModels(models) {
+      publicModels = Array.isArray(models) ? models : [];
+      const list = document.getElementById("model-list");
+      const query = (document.getElementById("model-search").value || "").trim().toLowerCase();
+      renderTabs(publicModels);
+      const items = publicModels.filter((model) => {
+        const family = modelFamily(model);
+        if (activeFamily !== "all" && family !== activeFamily) return false;
+        return !query || modelName(model).toLowerCase().includes(query) || family.toLowerCase().includes(query);
+      });
+      document.getElementById("model-summary").textContent = publicModels.length
+        ? "共 " + publicModels.length + " 个模型，当前显示 " + items.length + " 个。"
+        : "暂未配置开放模型。";
+      list.innerHTML = items.length
+        ? '<table class="model-table"><thead><tr><th>模型名称</th><th>供应商</th><th>服务可用性</th><th>24 小时调用</th><th>接口端点</th><th>响应时间</th></tr></thead><tbody>' +
+          items.map((model) => '<tr>' +
+            '<td><div class="model-name" title="' + escapeHtml(modelName(model)) + '">' + escapeHtml(modelName(model)) + '</div></td>' +
+            '<td class="model-provider">' + escapeHtml(modelFamily(model)) + '</td>' +
+            '<td><span class="model-badge">可用</span></td>' +
+            '<td>' + renderHours(model) + '</td>' +
+            '<td class="model-endpoint">' + escapeHtml(modelEndpoint(model)) + '</td>' +
+            '<td class="model-latency">' + escapeHtml(model.avgDurationMs ? model.avgDurationMs + "ms" : "暂无") + '</td>' +
+          '</tr>').join("") + '</tbody></table>'
+        : '<div class="model-empty">暂未配置开放模型。</div>';
+    }
+    document.addEventListener("input", (event) => {
+      if (event.target?.id === "model-search") renderModels(publicModels);
+    });
+    document.addEventListener("click", (event) => {
+      const family = event.target?.getAttribute?.("data-model-family");
+      if (!family) return;
+      activeFamily = family;
+      renderModels(publicModels);
+    });
     async function loadStatus() {
       try {
         const response = await fetch("/public/status", { cache: "no-store" });
@@ -430,7 +617,7 @@ function renderMonitorPage(): string {
         setText("calls", fmt(summary.calls || 0));
         setText("success-rate", String(summary.successRate || 0) + "%");
         document.getElementById("success-bar").style.width = Math.max(0, Math.min(100, summary.successRate || 0)) + "%";
-        renderModels(data.models || []);
+        renderModels(data.modelHealth || (data.models || []).map((model) => ({ model, hours: [] })));
       } catch {
         document.getElementById("state-dot").className = "dot bad";
         setText("state-text", "健康状态读取失败");
@@ -1521,6 +1708,7 @@ export class RouterState extends DurableObject<Env> {
   private healthCache: Record<string, AccountHealth> | null = null;
   private routingCache: RoutingSettings | null = null;
   private modelsCache: ModelSettings | null = null;
+  private modelHourlyCache: ModelHourlyStats | null = null;
 
   private async getAccounts(): Promise<AccountRecord[]> {
     if (this.accountsCache) return this.accountsCache;
@@ -1594,6 +1782,18 @@ export class RouterState extends DurableObject<Env> {
     await this.ctx.storage.put(MODELS_KEY, this.modelsCache);
   }
 
+  private async getModelHourlyStats(): Promise<ModelHourlyStats> {
+    if (this.modelHourlyCache) return this.modelHourlyCache;
+    const saved = await this.ctx.storage.get<ModelHourlyStats>(MODEL_HOURLY_KEY);
+    this.modelHourlyCache = saved && typeof saved === "object" ? saved : {};
+    return this.modelHourlyCache;
+  }
+
+  private async saveModelHourlyStats(stats: ModelHourlyStats): Promise<void> {
+    this.modelHourlyCache = stats;
+    await this.ctx.storage.put(MODEL_HOURLY_KEY, stats);
+  }
+
   private async getCursor(): Promise<number> {
     return (await this.ctx.storage.get<number>(CURSOR_KEY)) ?? 0;
   }
@@ -1647,6 +1847,29 @@ export class RouterState extends DurableObject<Env> {
     }
     statsMap[id] = current;
     await this.saveStatsMap(statsMap);
+  }
+
+  private async recordModelHourlyResult(model: string | null, status: number, durationMs: number): Promise<void> {
+    const normalized = model?.trim();
+    if (!normalized) return;
+    const stats = await this.getModelHourlyStats();
+    const key = hourKey();
+    const modelStats = stats[normalized] ?? {};
+    const bucket = modelStats[key] ?? createEmptyModelBucket();
+    bucket.calls += 1;
+    bucket.lastStatus = status;
+    bucket.totalDurationMs += durationMs;
+    bucket.avgDurationMs = bucket.calls > 0 ? Math.round(bucket.totalDurationMs / bucket.calls) : 0;
+    if (status >= 200 && status < 500) bucket.successes += 1;
+    else bucket.errors += 1;
+    modelStats[key] = bucket;
+
+    const keep = new Set(lastHourKeys(48));
+    for (const oldKey of Object.keys(modelStats)) {
+      if (!keep.has(oldKey)) delete modelStats[oldKey];
+    }
+    stats[normalized] = modelStats;
+    await this.saveModelHourlyStats(stats);
   }
 
   private async recordHealthResult(
@@ -1826,15 +2049,17 @@ export class RouterState extends DurableObject<Env> {
     const requestBody = request.method === "GET" || request.method === "HEAD"
       ? undefined
       : await request.arrayBuffer();
-    if (requestBody && (requestUrl.pathname === "/v1/chat/completions" || requestUrl.pathname === "/v1/responses")) {
+    let requestedModel: string | null = null;
+    const modelRequestPaths = new Set(["/v1/chat/completions", "/v1/responses", "/v1/embeddings"]);
+    if (requestBody && modelRequestPaths.has(requestUrl.pathname)) {
+      let payload: { model?: string };
+      try {
+        payload = JSON.parse(new TextDecoder().decode(requestBody)) as { model?: string };
+      } catch {
+        return json({ error: "Invalid JSON body" }, { status: 400 });
+      }
+      requestedModel = typeof payload.model === "string" ? payload.model.trim() : "";
       if (modelSettings.models.length > 0) {
-        let payload: { model?: string };
-        try {
-          payload = JSON.parse(new TextDecoder().decode(requestBody)) as { model?: string };
-        } catch {
-          return json({ error: "Invalid JSON body" }, { status: 400 });
-        }
-        const requestedModel = typeof payload.model === "string" ? payload.model.trim() : "";
         if (!requestedModel || !modelSettings.models.includes(requestedModel)) {
           return json({
             error: "Model is not enabled",
@@ -1874,6 +2099,7 @@ export class RouterState extends DurableObject<Env> {
           excluded.add(account.id);
           await this.markUnhealthy(account.id);
           await this.recordProxyResult(account.id, upstream.status, Date.now() - startedAt, `HTTP ${upstream.status}`);
+          await this.recordModelHourlyResult(requestedModel, upstream.status, Date.now() - startedAt);
           if (routing.disableOnFailure) await this.disableAccount(account.id);
           if (excluded.size >= enabledCount || attempts >= maxAttempts) {
             return this.withProxyHeaders(upstream, account.id);
@@ -1882,12 +2108,14 @@ export class RouterState extends DurableObject<Env> {
         }
         await this.markHealthy(account.id);
         await this.recordProxyResult(account.id, upstream.status, Date.now() - startedAt);
+        await this.recordModelHourlyResult(requestedModel, upstream.status, Date.now() - startedAt);
         return this.withProxyHeaders(upstream, account.id);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         excluded.add(account.id);
         await this.markUnhealthy(account.id);
         await this.recordProxyResult(account.id, 502, Date.now() - startedAt, message);
+        await this.recordModelHourlyResult(requestedModel, 502, Date.now() - startedAt);
         if (routing.disableOnFailure) await this.disableAccount(account.id);
         if (excluded.size >= enabledCount || attempts >= maxAttempts) {
           return json({ error: "All accounts failed", details: message }, { status: 502 });
@@ -2154,13 +2382,43 @@ export class RouterState extends DurableObject<Env> {
   }
 
   private async handlePublicStatus(): Promise<Response> {
-    const [accounts, statsMap, healthMap, modelSettings] = await Promise.all([
+    const [accounts, statsMap, healthMap, modelSettings, modelHourlyStats] = await Promise.all([
       this.getAccounts(),
       this.getStatsMap(),
       this.getHealthMap(),
       this.getModelSettings(),
+      this.getModelHourlyStats(),
     ]);
     const summary = summarizeAccounts(accounts, statsMap, healthMap);
+    const hours = lastHourKeys(24);
+    const modelHealth = modelSettings.models.map((model) => {
+      const stats = modelHourlyStats[model] ?? {};
+      const buckets = hours.map((key) => {
+        const bucket = stats[key] ?? createEmptyModelBucket();
+        const label = new Date(key).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+        return {
+          hour: key,
+          label,
+          calls: bucket.calls,
+          successes: bucket.successes,
+          errors: bucket.errors,
+          successRate: bucket.calls > 0 ? Math.round((bucket.successes / bucket.calls) * 100) : 0,
+          avgDurationMs: bucket.avgDurationMs,
+          lastStatus: bucket.lastStatus,
+        };
+      });
+      const calls = buckets.reduce((sum, bucket) => sum + bucket.calls, 0);
+      const successes = buckets.reduce((sum, bucket) => sum + bucket.successes, 0);
+      return {
+        model,
+        calls,
+        successRate: calls > 0 ? Math.round((successes / calls) * 100) : 0,
+        avgDurationMs: calls > 0
+          ? Math.round(buckets.reduce((sum, bucket) => sum + bucket.avgDurationMs * bucket.calls, 0) / calls)
+          : 0,
+        hours: buckets,
+      };
+    });
     const state = summary.enabled === 0 || summary.available === 0
       ? "bad"
       : summary.actionRequired > 0
@@ -2178,6 +2436,7 @@ export class RouterState extends DurableObject<Env> {
       message,
       generatedAt: Date.now(),
       models: modelSettings.models,
+      modelHealth,
       summary: {
         total: summary.total,
         enabled: summary.enabled,
