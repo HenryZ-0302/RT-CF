@@ -399,8 +399,8 @@ function renderMonitorPage(): string {
       box-shadow: none;
     }
     .model-tab.active { color: var(--accent); border-color: rgba(45, 98, 214, 0.34); background: rgba(45, 98, 214, 0.08); }
-    .model-table-wrap { overflow: visible; }
-    .model-table { display: grid; }
+    .model-table-wrap { overflow-x: auto; overflow-y: visible; }
+    .model-table { display: grid; min-width: 860px; }
     .model-row {
       display: grid;
       grid-template-columns: minmax(150px, 1.1fr) minmax(90px, 0.55fr) minmax(72px, 0.45fr) minmax(312px, 1.5fr) minmax(86px, 0.45fr);
@@ -414,15 +414,32 @@ function renderMonitorPage(): string {
     .model-row:last-child { border-bottom: 0; }
     .model-name { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
     .model-provider, .model-latency { color: var(--muted); }
-    .hour-strip { display: grid; grid-template-columns: repeat(24, 10px); gap: 3px; align-items: center; width: max-content; max-width: 100%; position: relative; }
+    .hour-strip {
+      display: grid;
+      grid-template-columns: repeat(24, 18px);
+      gap: 5px;
+      align-items: center;
+      width: max-content;
+      max-width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 2px 0 8px;
+      position: relative;
+      scrollbar-width: thin;
+      touch-action: pan-x;
+      -webkit-overflow-scrolling: touch;
+    }
+    .hour-strip::-webkit-scrollbar { height: 5px; }
+    .hour-strip::-webkit-scrollbar-thumb { background: rgba(109, 117, 128, 0.28); border-radius: 999px; }
     .hour-cell {
-      width: 10px;
+      width: 18px;
       height: 18px;
-      border-radius: 2px;
+      border-radius: 4px;
       background: rgba(109, 117, 128, 0.18);
       border: 1px solid rgba(109, 117, 128, 0.16);
       cursor: help;
       position: relative;
+      flex: 0 0 auto;
     }
     .hour-cell.good { background: rgba(19, 143, 115, 0.72); border-color: rgba(19, 143, 115, 0.42); }
     .hour-cell.warn { background: rgba(182, 107, 24, 0.62); border-color: rgba(182, 107, 24, 0.38); }
@@ -448,26 +465,20 @@ function renderMonitorPage(): string {
     }
     .model-empty { padding: 20px 18px; color: var(--muted); }
     .metric-mini { color: var(--muted); font-size: 12px; margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap; }
-    .hour-tooltip {
-      position: fixed;
-      z-index: 20;
+    .hour-detail-inline {
+      display: none;
+      margin-top: 8px;
+      padding: 8px 10px;
       min-width: 190px;
-      max-width: 260px;
-      padding: 10px 12px;
       border: 1px solid var(--line);
       border-radius: 8px;
       color: var(--ink);
-      background: rgba(255, 252, 246, 0.96);
-      box-shadow: 0 18px 44px rgba(45, 55, 72, 0.18);
-      pointer-events: none;
-      opacity: 0;
-      transform: translateY(6px);
-      transition: opacity 140ms ease, transform 140ms ease;
+      background: rgba(255, 252, 246, 0.72);
       font-size: 12px;
       line-height: 1.6;
     }
-    .hour-tooltip.show { opacity: 1; transform: translateY(0); }
-    .hour-tooltip b { display: block; font-size: 13px; margin-bottom: 4px; }
+    .hour-detail-inline.show { display: block; }
+    .hour-detail-inline b { display: block; font-size: 13px; margin-bottom: 4px; }
     @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes ripple { 0% { opacity: 0.4; transform: scale(0.7); } 70%, 100% { opacity: 0; transform: scale(1.9); } }
     @keyframes breatheOk { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
@@ -494,10 +505,12 @@ function renderMonitorPage(): string {
     @media (max-width: 820px) { .masthead { grid-template-columns: 1fr; } .grid { grid-template-columns: 1fr 1fr; } }
     @media (max-width: 640px) { .model-head { grid-template-columns: 1fr; } }
     @media (max-width: 760px) {
+      .model-table-wrap { overflow-x: auto; }
+      .model-table { min-width: 0; }
       .model-row { grid-template-columns: 1fr; gap: 8px; }
       .model-row.head { display: none; }
-      .hour-strip { grid-template-columns: repeat(24, minmax(8px, 1fr)); width: 100%; }
-      .hour-cell { width: 100%; }
+      .hour-strip { grid-template-columns: repeat(24, 22px); width: 100%; max-width: 100%; }
+      .hour-cell { width: 22px; height: 22px; }
     }
     @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
   </style>
@@ -541,7 +554,6 @@ function renderMonitorPage(): string {
       <div id="model-list" class="model-table-wrap"><div class="model-empty">正在读取模型列表...</div></div>
     </section>
   </main>
-  <div id="hour-tooltip" class="hour-tooltip"></div>
   <script>
     function fmt(value) {
       const n = Number(value || 0);
@@ -590,7 +602,7 @@ function renderMonitorPage(): string {
     }
     function renderHours(model) {
       const buckets = Array.isArray(model?.hours) ? model.hours : [];
-      return '<div class="hour-strip" aria-label="最近 24 小时调用状态">' + buckets.map((bucket) => {
+      return '<div class="hour-block"><div class="hour-strip" aria-label="最近 24 小时调用状态">' + buckets.map((bucket) => {
         const time = new Date(bucket.hour).toLocaleString(undefined, {
           month: "2-digit",
           day: "2-digit",
@@ -602,7 +614,7 @@ function renderMonitorPage(): string {
           ? time + "｜调用 " + bucket.calls + "｜成功 " + bucket.successes + "｜失败 " + bucket.errors + "｜成功率 " + bucket.successRate + "%｜延迟 " + (bucket.avgDurationMs || 0) + "ms"
           : time + "｜暂无调用";
         return '<i class="hour-cell ' + hourClass(bucket) + '" data-hour-detail="' + escapeHtml(detail) + '"></i>';
-      }).join("") + '</div>';
+      }).join("") + '</div><div class="hour-detail-inline"></div></div>';
     }
     function renderTabs(models) {
       const tabs = document.getElementById("model-tabs");
@@ -654,24 +666,21 @@ function renderMonitorPage(): string {
     function showHourTooltip(target) {
       const detail = target?.getAttribute?.("data-hour-detail");
       if (!detail) return;
-      const tooltip = document.getElementById("hour-tooltip");
+      const tooltip = target.closest(".hour-block")?.querySelector(".hour-detail-inline");
+      if (!tooltip) return;
       const parts = detail.split("｜");
       tooltip.innerHTML = '<b>' + escapeHtml(parts[0] || "") + '</b>' + parts.slice(1).map((item) => '<div>' + escapeHtml(item) + '</div>').join("");
-      const rect = target.getBoundingClientRect();
-      const left = Math.min(window.innerWidth - 280, Math.max(12, rect.left + rect.width / 2 - 95));
-      const top = Math.min(window.innerHeight - 140, rect.bottom + 14);
-      tooltip.style.left = left + "px";
-      tooltip.style.top = Math.max(12, top) + "px";
       tooltip.classList.add("show");
     }
-    function hideHourTooltip() {
-      document.getElementById("hour-tooltip").classList.remove("show");
+    function hideHourTooltip(target) {
+      const tooltip = target?.closest?.(".hour-block")?.querySelector?.(".hour-detail-inline");
+      tooltip?.classList?.remove("show");
     }
     document.addEventListener("pointerover", (event) => {
       if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target);
     });
     document.addEventListener("pointerout", (event) => {
-      if (event.target?.matches?.("[data-hour-detail]")) hideHourTooltip();
+      if (event.target?.matches?.("[data-hour-detail]")) hideHourTooltip(event.target);
     });
     document.addEventListener("pointerdown", (event) => {
       if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target);
