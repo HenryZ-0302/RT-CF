@@ -353,7 +353,9 @@ function renderMonitorPage(): string {
     .dot.warn::after { animation: ripple 2.8s ease-out infinite; }
     .dot.bad { color: var(--bad); background: var(--bad); box-shadow: 0 0 0 7px rgba(200, 76, 76, 0.14); animation: breatheBad 1.8s ease-in-out infinite; }
     .dot.bad::after { animation: ripple 1.8s ease-out infinite; }
-    .status-tile { padding: 14px; display: flex; align-items: center; min-height: 96px; }
+    .status-tile { padding: 0; display: grid; grid-template-rows: 1fr 1fr; min-height: 148px; overflow: hidden; }
+    .status-part { padding: 14px; display: flex; align-items: center; }
+    .status-part + .status-part { border-top: 1px solid var(--line); }
     .status-tile b { display: block; color: var(--ink); font-size: 26px; line-height: 1; margin-bottom: 6px; }
     .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0; }
     .card {
@@ -459,7 +461,7 @@ function renderMonitorPage(): string {
       box-shadow: 0 18px 44px rgba(45, 55, 72, 0.18);
       pointer-events: none;
       opacity: 0;
-      transform: translateY(4px);
+      transform: translateY(6px);
       transition: opacity 140ms ease, transform 140ms ease;
       font-size: 12px;
       line-height: 1.6;
@@ -513,7 +515,10 @@ function renderMonitorPage(): string {
         </div>
       </div>
       <aside class="status-tile">
-        <p><b>15s</b>自动刷新</p>
+        <div class="status-part"><p><b>15s</b>自动刷新</p></div>
+        <div class="status-part">
+          <p><b id="success-rate">0%</b>调用成功率</p>
+        </div>
       </aside>
     </section>
     <section class="grid">
@@ -521,11 +526,6 @@ function renderMonitorPage(): string {
       <div class="card"><b id="calls">0</b><span>调用次数</span></div>
       <div class="card"><b id="successes">0</b><span>成功次数</span></div>
       <div class="card"><b id="errors">0</b><span>失败次数</span></div>
-      <div class="card">
-        <b id="success-rate">0%</b>
-        <span>真实请求成功率</span>
-        <div class="bar"><i id="success-bar"></i></div>
-      </div>
     </section>
     <section class="card model-panel">
       <div class="model-head">
@@ -591,9 +591,16 @@ function renderMonitorPage(): string {
     function renderHours(model) {
       const buckets = Array.isArray(model?.hours) ? model.hours : [];
       return '<div class="hour-strip" aria-label="最近 24 小时调用状态">' + buckets.map((bucket) => {
+        const time = new Date(bucket.hour).toLocaleString(undefined, {
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        });
         const detail = bucket?.calls
-          ? bucket.label + "｜调用 " + bucket.calls + "｜成功 " + bucket.successes + "｜失败 " + bucket.errors + "｜成功率 " + bucket.successRate + "%｜延迟 " + (bucket.avgDurationMs || 0) + "ms"
-          : bucket.label + "｜暂无调用";
+          ? time + "｜调用 " + bucket.calls + "｜成功 " + bucket.successes + "｜失败 " + bucket.errors + "｜成功率 " + bucket.successRate + "%｜延迟 " + (bucket.avgDurationMs || 0) + "ms"
+          : time + "｜暂无调用";
         return '<i class="hour-cell ' + hourClass(bucket) + '" data-hour-detail="' + escapeHtml(detail) + '"></i>';
       }).join("") + '</div>';
     }
@@ -644,30 +651,30 @@ function renderMonitorPage(): string {
       activeFamily = family;
       renderModels(publicModels);
     });
-    function showHourTooltip(target, clientX, clientY) {
+    function showHourTooltip(target) {
       const detail = target?.getAttribute?.("data-hour-detail");
       if (!detail) return;
       const tooltip = document.getElementById("hour-tooltip");
       const parts = detail.split("｜");
       tooltip.innerHTML = '<b>' + escapeHtml(parts[0] || "") + '</b>' + parts.slice(1).map((item) => '<div>' + escapeHtml(item) + '</div>').join("");
-      tooltip.style.left = Math.min(window.innerWidth - 280, clientX + 12) + "px";
-      tooltip.style.top = Math.max(12, clientY - 12) + "px";
+      const rect = target.getBoundingClientRect();
+      const left = Math.min(window.innerWidth - 280, Math.max(12, rect.left + rect.width / 2 - 95));
+      const top = Math.min(window.innerHeight - 140, rect.bottom + 14);
+      tooltip.style.left = left + "px";
+      tooltip.style.top = Math.max(12, top) + "px";
       tooltip.classList.add("show");
     }
     function hideHourTooltip() {
       document.getElementById("hour-tooltip").classList.remove("show");
     }
     document.addEventListener("pointerover", (event) => {
-      if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target, event.clientX, event.clientY);
-    });
-    document.addEventListener("pointermove", (event) => {
-      if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target, event.clientX, event.clientY);
+      if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target);
     });
     document.addEventListener("pointerout", (event) => {
       if (event.target?.matches?.("[data-hour-detail]")) hideHourTooltip();
     });
     document.addEventListener("pointerdown", (event) => {
-      if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target, event.clientX, event.clientY);
+      if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target);
     });
     async function loadStatus() {
       try {
@@ -682,7 +689,6 @@ function renderMonitorPage(): string {
         setText("successes", fmt(summary.successes || 0));
         setText("errors", fmt(summary.errors || 0));
         setText("success-rate", String(summary.successRate || 0) + "%");
-        document.getElementById("success-bar").style.width = Math.max(0, Math.min(100, summary.successRate || 0)) + "%";
         renderModels(data.modelHealth || (data.models || []).map((model) => ({ model, hours: [] })));
       } catch {
         document.getElementById("state-dot").className = "dot bad";
@@ -1381,7 +1387,7 @@ function renderAdminPage(): string {
           '<td><div class="mono">' + (account.stats?.calls || 0) + ' 次</div><div class="muted">成功 ' + (account.stats?.successes || 0) + ' / 失败 ' + (account.stats?.errors || 0) + ' / ' + successRate + '</div><div class="muted">均耗时 ' + (account.stats?.avgDurationMs || 0) + 'ms</div></td>' +
           '<td><div class="mono">' + (account.health?.checks || 0) + ' 次</div><div class="muted">' + lastCheck + '</div></td>' +
           '<td><div class="muted">' + lastUsed + '</div></td>' +
-          '<td><div class="inline-actions"><button class="secondary" onclick="editAccount(\\'' + escapeHtml(account.id) + '\\')">编辑</button><button class="secondary" onclick="testAccount(\\'' + escapeHtml(account.id) + '\\')">可用检测</button><button class="secondary" onclick="toggleAccount(\\'' + escapeHtml(account.id) + '\\', ' + (!account.enabled) + ')">' + (account.enabled ? "停用" : "启用") + '</button><button class="danger" onclick="removeAccount(\\'' + escapeHtml(account.id) + '\\')">删除</button></div></td>' +
+          '<td><div class="inline-actions"><button class="secondary" onclick="editAccount(\\'' + escapeHtml(account.id) + '\\')">编辑</button><button class="secondary" onclick="copyAccountUrl(\\'' + escapeHtml(account.id) + '\\')">复制地址</button><button class="secondary" onclick="testAccount(\\'' + escapeHtml(account.id) + '\\')">可用检测</button><button class="secondary" onclick="toggleAccount(\\'' + escapeHtml(account.id) + '\\', ' + (!account.enabled) + ')">' + (account.enabled ? "停用" : "启用") + '</button><button class="danger" onclick="removeAccount(\\'' + escapeHtml(account.id) + '\\')">删除</button></div></td>' +
           '</tr>';
       }).join("") + '</tbody></table></div>';
       document.querySelectorAll("[data-account-check]").forEach((input) => {
@@ -1524,6 +1530,19 @@ function renderAdminPage(): string {
         setStatus(metaStatusEl, "代理端点已复制：" + endpoint);
       } catch {
         setStatus(metaStatusEl, "复制失败，请手动复制：" + endpoint, true);
+      }
+    }
+    async function copyAccountUrl(id) {
+      const account = currentAccounts.find((item) => item.id === id);
+      if (!account) {
+        setStatus(statusEl, "未找到账号。", true);
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(account.baseUrl);
+        setStatus(statusEl, "节点地址已复制：" + account.baseUrl);
+      } catch {
+        setStatus(statusEl, "复制失败，请手动复制：" + account.baseUrl, true);
       }
     }
     async function addAccount() {
@@ -1690,6 +1709,7 @@ function renderAdminPage(): string {
     window.testAccount = testAccount;
     window.editAccount = editAccount;
     window.removeAccount = removeAccount;
+    window.copyAccountUrl = copyAccountUrl;
     document.getElementById("gate-submit").addEventListener("click", verify);
     tokenInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") verify();
