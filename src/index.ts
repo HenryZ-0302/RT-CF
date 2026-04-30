@@ -399,7 +399,7 @@ function renderMonitorPage(): string {
       box-shadow: none;
     }
     .model-tab.active { color: var(--accent); border-color: rgba(45, 98, 214, 0.34); background: rgba(45, 98, 214, 0.08); }
-    .model-table-wrap { overflow: visible; }
+    .model-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-inline: contain; }
     .model-table { display: grid; }
     .model-row {
       display: grid;
@@ -414,7 +414,7 @@ function renderMonitorPage(): string {
     .model-row:last-child { border-bottom: 0; }
     .model-name { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
     .model-provider, .model-latency { color: var(--muted); }
-    .hour-strip { display: grid; grid-template-columns: repeat(24, 10px); gap: 3px; align-items: center; width: max-content; max-width: 100%; position: relative; }
+    .hour-strip { display: grid; grid-template-columns: repeat(24, 10px); gap: 3px; align-items: center; width: max-content; position: relative; }
     .hour-cell {
       width: 10px;
       height: 18px;
@@ -423,6 +423,7 @@ function renderMonitorPage(): string {
       border: 1px solid rgba(109, 117, 128, 0.16);
       cursor: help;
       position: relative;
+      touch-action: pan-x;
     }
     .hour-cell.good { background: rgba(19, 143, 115, 0.72); border-color: rgba(19, 143, 115, 0.42); }
     .hour-cell.warn { background: rgba(182, 107, 24, 0.62); border-color: rgba(182, 107, 24, 0.38); }
@@ -448,26 +449,18 @@ function renderMonitorPage(): string {
     }
     .model-empty { padding: 20px 18px; color: var(--muted); }
     .metric-mini { color: var(--muted); font-size: 12px; margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap; }
-    .hour-tooltip {
-      position: fixed;
-      z-index: 20;
-      min-width: 190px;
-      max-width: 260px;
+    .hour-detail {
+      margin: 0 18px 12px;
       padding: 10px 12px;
       border: 1px solid var(--line);
       border-radius: 8px;
       color: var(--ink);
-      background: rgba(255, 252, 246, 0.96);
-      box-shadow: 0 18px 44px rgba(45, 55, 72, 0.18);
-      pointer-events: none;
-      opacity: 0;
-      transform: translateY(6px);
-      transition: opacity 140ms ease, transform 140ms ease;
+      background: rgba(255, 252, 246, 0.62);
       font-size: 12px;
       line-height: 1.6;
     }
-    .hour-tooltip.show { opacity: 1; transform: translateY(0); }
-    .hour-tooltip b { display: block; font-size: 13px; margin-bottom: 4px; }
+    .hour-detail b { display: block; font-size: 13px; margin-bottom: 4px; }
+    .hour-detail-list { display: flex; gap: 12px; flex-wrap: wrap; color: var(--muted); }
     @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes ripple { 0% { opacity: 0.4; transform: scale(0.7); } 70%, 100% { opacity: 0; transform: scale(1.9); } }
     @keyframes breatheOk { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
@@ -494,10 +487,9 @@ function renderMonitorPage(): string {
     @media (max-width: 820px) { .masthead { grid-template-columns: 1fr; } .grid { grid-template-columns: 1fr 1fr; } }
     @media (max-width: 640px) { .model-head { grid-template-columns: 1fr; } }
     @media (max-width: 760px) {
-      .model-row { grid-template-columns: 1fr; gap: 8px; }
+      .model-table { min-width: 760px; }
+      .model-row { grid-template-columns: minmax(150px, 1.1fr) minmax(90px, 0.55fr) minmax(72px, 0.45fr) minmax(312px, 1.5fr) minmax(86px, 0.45fr); gap: 12px; }
       .model-row.head { display: none; }
-      .hour-strip { grid-template-columns: repeat(24, minmax(8px, 1fr)); width: 100%; }
-      .hour-cell { width: 100%; }
     }
     @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
   </style>
@@ -538,10 +530,10 @@ function renderMonitorPage(): string {
         </div>
       </div>
       <div id="model-tabs" class="model-tabs"></div>
+      <div id="hour-detail" class="hour-detail"><b>小时详情</b><div class="hour-detail-list"><span>点击任意小时方块查看调用详情。</span></div></div>
       <div id="model-list" class="model-table-wrap"><div class="model-empty">正在读取模型列表...</div></div>
     </section>
   </main>
-  <div id="hour-tooltip" class="hour-tooltip"></div>
   <script>
     function fmt(value) {
       const n = Number(value || 0);
@@ -651,30 +643,15 @@ function renderMonitorPage(): string {
       activeFamily = family;
       renderModels(publicModels);
     });
-    function showHourTooltip(target) {
+    function showHourDetail(target) {
       const detail = target?.getAttribute?.("data-hour-detail");
       if (!detail) return;
-      const tooltip = document.getElementById("hour-tooltip");
+      const panel = document.getElementById("hour-detail");
       const parts = detail.split("｜");
-      tooltip.innerHTML = '<b>' + escapeHtml(parts[0] || "") + '</b>' + parts.slice(1).map((item) => '<div>' + escapeHtml(item) + '</div>').join("");
-      const rect = target.getBoundingClientRect();
-      const left = Math.min(window.innerWidth - 280, Math.max(12, rect.left + rect.width / 2 - 95));
-      const top = Math.min(window.innerHeight - 140, rect.bottom + 14);
-      tooltip.style.left = left + "px";
-      tooltip.style.top = Math.max(12, top) + "px";
-      tooltip.classList.add("show");
-    }
-    function hideHourTooltip() {
-      document.getElementById("hour-tooltip").classList.remove("show");
-    }
-    document.addEventListener("pointerover", (event) => {
-      if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target);
+      panel.innerHTML = '<b>' + escapeHtml(parts[0] || "") + '</b><div class="hour-detail-list">' + parts.slice(1).map((item) => '<span>' + escapeHtml(item) + '</span>').join("") + '</div>';
     });
-    document.addEventListener("pointerout", (event) => {
-      if (event.target?.matches?.("[data-hour-detail]")) hideHourTooltip();
-    });
-    document.addEventListener("pointerdown", (event) => {
-      if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target);
+    document.addEventListener("click", (event) => {
+      if (event.target?.matches?.("[data-hour-detail]")) showHourDetail(event.target);
     });
     async function loadStatus() {
       try {
