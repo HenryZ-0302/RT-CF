@@ -231,7 +231,7 @@ function renderMonitorPage(): string {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RT-CF Health</title>
+  <title>API Health</title>
   <style>
     :root {
       color-scheme: light dark;
@@ -239,7 +239,6 @@ function renderMonitorPage(): string {
       --ink: #18202b;
       --muted: #6d7580;
       --panel: rgba(255, 252, 246, 0.86);
-      --panel-strong: #fffaf1;
       --line: rgba(37, 45, 59, 0.14);
       --ok: #138f73;
       --warn: #b66b18;
@@ -277,40 +276,55 @@ function renderMonitorPage(): string {
     h1 { margin: 0; max-width: 760px; font-size: clamp(34px, 6vw, 64px); line-height: 0.96; letter-spacing: 0; text-wrap: pretty; }
     p { margin: 0; color: var(--muted); line-height: 1.7; text-wrap: pretty; }
     .status-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
-    .dot { width: 11px; height: 11px; border-radius: 999px; background: var(--muted); box-shadow: 0 0 0 7px rgba(109, 117, 128, 0.13); }
-    .dot.ok { background: var(--ok); box-shadow: 0 0 0 7px rgba(19, 143, 115, 0.13); }
-    .dot.warn { background: var(--warn); box-shadow: 0 0 0 7px rgba(182, 107, 24, 0.14); }
-    .dot.bad { background: var(--bad); box-shadow: 0 0 0 7px rgba(200, 76, 76, 0.14); }
-    .status-tile { padding: 20px; display: flex; flex-direction: column; justify-content: space-between; min-height: 220px; }
-    .ring {
-      width: 116px;
-      height: 116px;
+    .dot {
+      width: 12px;
+      height: 12px;
       border-radius: 999px;
-      border: 1px solid var(--line);
-      display: grid;
-      place-items: center;
-      background: conic-gradient(from 210deg, rgba(19, 143, 115, 0.24), rgba(45, 98, 214, 0.14), rgba(24, 32, 43, 0.05));
+      background: var(--muted);
+      box-shadow: 0 0 0 7px rgba(109, 117, 128, 0.13);
+      position: relative;
     }
-    .ring::after { content: ""; width: 62px; height: 62px; border-radius: inherit; background: var(--panel-strong); border: 1px solid var(--line); }
-    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 12px 0; }
+    .dot::after {
+      content: "";
+      position: absolute;
+      inset: -8px;
+      border-radius: inherit;
+      border: 1px solid currentColor;
+      opacity: 0;
+      transform: scale(0.72);
+    }
+    .dot.ok { color: var(--ok); background: var(--ok); box-shadow: 0 0 0 7px rgba(19, 143, 115, 0.13), 0 0 28px rgba(19, 143, 115, 0.28); animation: breatheOk 2.4s ease-in-out infinite; }
+    .dot.ok::after { animation: ripple 2.4s ease-out infinite; }
+    .dot.warn { color: var(--warn); background: var(--warn); box-shadow: 0 0 0 7px rgba(182, 107, 24, 0.14); animation: breatheWarn 2.8s ease-in-out infinite; }
+    .dot.warn::after { animation: ripple 2.8s ease-out infinite; }
+    .dot.bad { color: var(--bad); background: var(--bad); box-shadow: 0 0 0 7px rgba(200, 76, 76, 0.14); animation: breatheBad 1.8s ease-in-out infinite; }
+    .dot.bad::after { animation: ripple 1.8s ease-out infinite; }
+    .status-tile { padding: 20px; display: flex; align-items: center; min-height: 140px; }
+    .status-tile b { display: block; color: var(--ink); font-size: 28px; line-height: 1; margin-bottom: 8px; }
+    .grid { display: grid; grid-template-columns: 0.75fr 0.75fr 1.5fr; gap: 12px; margin: 12px 0; }
     .card {
       padding: 18px;
       animation: rise 420ms ease-out both;
     }
     .card b { display: block; font-size: clamp(26px, 4vw, 36px); line-height: 1; margin-bottom: 8px; }
     .card span { color: var(--muted); font-size: 13px; }
-    .wide { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 12px; }
     .bar { height: 11px; border-radius: 999px; overflow: hidden; background: rgba(24, 32, 43, 0.09); margin-top: 16px; }
     .bar i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--ok)); transition: width 520ms ease; }
     .footer { color: var(--muted); font-size: 13px; margin-top: 18px; }
     @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes ripple { 0% { opacity: 0.4; transform: scale(0.7); } 70%, 100% { opacity: 0; transform: scale(1.9); } }
+    @keyframes breatheOk { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+    @keyframes breatheWarn { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.14); } }
+    @keyframes breatheBad { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
+    @media (prefers-reduced-motion: reduce) {
+      .card, .dot, .dot::after { animation: none !important; }
+    }
     @media (prefers-color-scheme: dark) {
       :root {
         --paper: #151515;
         --ink: #f5efe4;
         --muted: #a7a094;
         --panel: rgba(29, 29, 27, 0.86);
-        --panel-strong: #20201d;
         --line: rgba(245, 239, 228, 0.12);
         --shadow: 0 22px 70px rgba(0, 0, 0, 0.28);
       }
@@ -320,8 +334,8 @@ function renderMonitorPage(): string {
           repeating-linear-gradient(90deg, rgba(245, 239, 228, 0.035) 0 1px, transparent 1px 88px);
       }
     }
-    @media (max-width: 820px) { .masthead { grid-template-columns: 1fr; } .grid, .wide { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 520px) { .grid, .wide { grid-template-columns: 1fr; } }
+    @media (max-width: 820px) { .masthead { grid-template-columns: 1fr; } .grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -329,37 +343,26 @@ function renderMonitorPage(): string {
     <section class="masthead">
       <div class="hero">
         <span class="eyebrow">Public service board</span>
-        <h1>RT-CF Health</h1>
-        <p>这是面向外部的健康监控页，只展示聚合状态，不暴露账号、密钥或管理操作。</p>
+        <h1>API Health</h1>
+        <p>这是面向外部的 API 健康监控页。</p>
         <div class="status-line">
           <i id="state-dot" class="dot"></i>
           <strong id="state-text">正在读取状态...</strong>
         </div>
       </div>
       <aside class="status-tile">
-        <div class="ring" aria-hidden="true"></div>
-        <p>自动刷新，不需要登录。管理入口位于 /admin，但此页不提供跳转按钮。</p>
+        <p><b>15s</b>自动刷新</p>
       </aside>
     </section>
     <section class="grid">
-      <div class="card"><b id="available">0</b><span>可参与轮询</span></div>
-      <div class="card"><b id="enabled">0</b><span>启用账号</span></div>
-      <div class="card"><b id="action">0</b><span>需处理</span></div>
-      <div class="card"><b id="calls">0</b><span>真实 API 请求</span></div>
-    </section>
-    <section class="wide">
+      <div class="card"><b id="available">0</b><span>可用账号</span></div>
+      <div class="card"><b id="calls">0</b><span>调用次数</span></div>
       <div class="card">
         <b id="success-rate">0%</b>
         <span>真实请求成功率</span>
         <div class="bar"><i id="success-bar"></i></div>
       </div>
-      <div class="card">
-        <b id="health-checks">0</b>
-        <span>健康检测次数</span>
-        <p class="footer" id="checked-at">尚未刷新</p>
-      </div>
     </section>
-    <p class="footer">页面每 15 秒自动刷新。公开页只用于健康披露。</p>
   </main>
   <script>
     function fmt(value) {
@@ -380,13 +383,9 @@ function renderMonitorPage(): string {
         dot.className = "dot " + data.state;
         setText("state-text", data.message || "状态未知");
         setText("available", summary.available || 0);
-        setText("enabled", summary.enabled || 0);
-        setText("action", summary.actionRequired || 0);
         setText("calls", fmt(summary.calls || 0));
         setText("success-rate", String(summary.successRate || 0) + "%");
-        setText("health-checks", fmt(summary.healthChecks || 0));
         document.getElementById("success-bar").style.width = Math.max(0, Math.min(100, summary.successRate || 0)) + "%";
-        setText("checked-at", "最后刷新：" + new Date(data.generatedAt || Date.now()).toLocaleString());
       } catch {
         document.getElementById("state-dot").className = "dot bad";
         setText("state-text", "健康状态读取失败");
@@ -729,7 +728,7 @@ function renderAdminPage(): string {
       <div class="stat warn"><b id="sum-action">0</b><span class="muted">需处理</span></div>
       <div class="stat"><b id="sum-enabled">0</b><span class="muted">启用中</span></div>
       <div class="stat"><b id="sum-disabled">0</b><span class="muted">已停用</span></div>
-      <div class="stat"><b id="sum-calls">0</b><span class="muted">真实 API 请求</span></div>
+      <div class="stat"><b id="sum-calls">0</b><span class="muted">调用次数</span></div>
       <div class="stat good"><b id="sum-successes">0</b><span class="muted">成功</span></div>
       <div class="stat bad"><b id="sum-errors">0</b><span class="muted">失败</span></div>
       <div class="stat good"><b id="sum-success-rate">0%</b><span class="muted">真实成功率</span></div>
