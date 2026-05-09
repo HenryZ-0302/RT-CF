@@ -9,6 +9,7 @@ export interface Env {
 
 type AccountRecord = {
   id: string;
+  projectId: string;
   label: string;
   baseUrl: string;
   apiKey: string;
@@ -20,6 +21,7 @@ type AccountRecord = {
 
 type AccountInput = {
   id?: string;
+  projectId?: string;
   label?: string;
   baseUrl: string;
   apiKey?: string;
@@ -51,6 +53,7 @@ type AccountHealth = {
 
 type PublicAccount = {
   id: string;
+  projectId: string;
   label: string;
   baseUrl: string;
   enabled: boolean;
@@ -65,7 +68,6 @@ type ProjectRecord = {
   id: string;
   name: string;
   enabled: boolean;
-  accountIds: string[];
   apiKeys: string[];
   createdAt: number;
   updatedAt: number;
@@ -75,16 +77,15 @@ type ProjectInput = {
   id?: string;
   name?: string;
   enabled?: boolean;
-  accountIds?: string[];
 };
 
 type PublicProject = {
   id: string;
   name: string;
   enabled: boolean;
-  accountIds: string[];
   apiKeys: string[];
   keyCount: number;
+  accountCount: number;
   createdAt: number;
   updatedAt: number;
 };
@@ -117,6 +118,8 @@ const ROUTING_KEY = "routing";
 const MODELS_KEY = "models";
 const MODEL_HOURLY_KEY = "model_hourly";
 const PROJECTS_KEY = "projects";
+const DEFAULT_PROJECT_ID = "default-rt";
+const DEFAULT_PROJECT_NAME = "RT 默认项目";
 
 function normalizeWeight(value: unknown): number {
   const weight = Number(value ?? 1);
@@ -253,19 +256,6 @@ function generateProjectApiKey(): string {
   return `hy_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
-function sanitizeAccountIds(value: unknown): string[] {
-  const incoming = Array.isArray(value) ? value : [];
-  const seen = new Set<string>();
-  const ids: string[] = [];
-  for (const item of incoming) {
-    const id = String(item ?? "").trim();
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    ids.push(id);
-  }
-  return ids;
-}
-
 function sanitizeProjectInput(payload: ProjectInput, existing?: ProjectRecord): ProjectRecord {
   const now = Date.now();
   const id = payload.id?.trim() || existing?.id || generateProjectId();
@@ -273,33 +263,45 @@ function sanitizeProjectInput(payload: ProjectInput, existing?: ProjectRecord): 
     id,
     name: payload.name?.trim() || existing?.name || id,
     enabled: payload.enabled ?? existing?.enabled ?? true,
-    accountIds: sanitizeAccountIds(payload.accountIds ?? existing?.accountIds ?? []),
     apiKeys: existing?.apiKeys ?? [],
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
 }
 
-function toPublicProject(project: ProjectRecord): PublicProject {
+function createDefaultProject(existing?: Partial<ProjectRecord>): ProjectRecord {
+  const now = Date.now();
+  return {
+    id: DEFAULT_PROJECT_ID,
+    name: existing?.name?.trim() || DEFAULT_PROJECT_NAME,
+    enabled: existing?.enabled ?? true,
+    apiKeys: Array.isArray(existing?.apiKeys) ? existing.apiKeys : [],
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: existing?.updatedAt ?? now,
+  };
+}
+
+function toPublicProject(project: ProjectRecord, accountCount = 0): PublicProject {
   return {
     id: project.id,
     name: project.name,
     enabled: project.enabled,
-    accountIds: project.accountIds,
     apiKeys: project.apiKeys,
     keyCount: project.apiKeys.length,
+    accountCount,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
   };
 }
 
-function sanitizeAccountInput(payload: AccountInput): AccountRecord {
+function sanitizeAccountInput(payload: AccountInput, projectId = DEFAULT_PROJECT_ID, existing?: AccountRecord): AccountRecord {
   const resolvedId = payload.id?.trim() || generateAccountId();
   if (!payload.baseUrl?.trim()) throw new Error("Account baseUrl is required");
-  const resolvedApiKey = payload.apiKey?.trim() || "";
+  const resolvedApiKey = payload.apiKey?.trim() || existing?.apiKey || "";
   if (!resolvedApiKey) throw new Error("Account apiKey is required");
   return {
     id: resolvedId,
+    projectId: payload.projectId?.trim() || existing?.projectId || projectId,
     label: payload.label?.trim() || resolvedId,
     baseUrl: normalizeBaseUrl(payload.baseUrl),
     apiKey: resolvedApiKey,
@@ -313,6 +315,7 @@ function sanitizeAccountInput(payload: AccountInput): AccountRecord {
 function toPublicAccount(account: AccountRecord, stats: AccountStat, health: AccountHealth): PublicAccount {
   return {
     id: account.id,
+    projectId: account.projectId || DEFAULT_PROJECT_ID,
     label: account.label,
     baseUrl: account.baseUrl,
     enabled: account.enabled,
@@ -2152,6 +2155,595 @@ function renderAdminPage(): string {
 </html>`;
 }
 
+function renderAdminPageV2(): string {
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HYHub Admin</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --panel-soft: #f1f5f9;
+      --text: #172033;
+      --muted: #64748b;
+      --line: rgba(23, 32, 51, 0.12);
+      --accent: #2563eb;
+      --ok: #0f9f6e;
+      --warn: #b7791f;
+      --bad: #d64545;
+      --shadow: 0 18px 46px rgba(15, 23, 42, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    .hidden { display: none !important; }
+    .gate { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+    .gate-card, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
+    .gate-card { width: min(440px, 100%); padding: 28px; display: grid; gap: 14px; }
+    .shell { min-height: 100vh; display: grid; grid-template-columns: 236px minmax(0, 1fr); }
+    aside { border-right: 1px solid var(--line); background: var(--panel); padding: 20px 14px; display: flex; flex-direction: column; gap: 18px; }
+    .brand h1 { margin: 0 0 6px; font-size: 25px; letter-spacing: 0; }
+    .brand p, .muted { color: var(--muted); line-height: 1.55; }
+    nav { display: grid; gap: 8px; }
+    .nav-btn { justify-content: flex-start; background: transparent; color: var(--text); border: 1px solid transparent; }
+    .nav-btn.active { background: var(--panel-soft); border-color: var(--line); color: var(--accent); }
+    main { padding: 22px; display: grid; gap: 16px; align-content: start; }
+    header { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; border-bottom: 1px solid var(--line); padding-bottom: 14px; }
+    h2, h3 { margin: 0; letter-spacing: 0; }
+    h2 { font-size: 26px; }
+    h3 { font-size: 17px; }
+    button, input, textarea, select { font: inherit; border-radius: 8px; }
+    button { border: 0; padding: 10px 13px; background: var(--accent); color: #fff; cursor: pointer; }
+    button.secondary { background: #334155; }
+    button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+    button.danger { background: var(--bad); }
+    button:disabled { opacity: .65; cursor: wait; }
+    input, textarea, select { width: 100%; border: 1px solid var(--line); background: var(--panel); color: var(--text); padding: 11px 12px; }
+    textarea { min-height: 92px; resize: vertical; }
+    .page { display: none; gap: 16px; }
+    .page.active { display: grid; }
+    .panel { padding: 18px; }
+    .grid { display: grid; gap: 12px; }
+    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+    .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+    .stat b { display: block; font-size: 25px; margin-bottom: 6px; }
+    .layout-projects { display: grid; grid-template-columns: 310px minmax(0, 1fr); gap: 16px; align-items: start; }
+    .list { display: grid; gap: 8px; }
+    .list-item { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 12px; display: grid; gap: 7px; cursor: pointer; }
+    .list-item.active { border-color: rgba(37, 99, 235, .55); box-shadow: 0 0 0 3px rgba(37, 99, 235, .09); }
+    .toolbar, .actions, .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .row { justify-content: space-between; }
+    .tag { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); color: var(--muted); border-radius: 999px; padding: 4px 8px; font-size: 12px; }
+    .tag.ok { color: var(--ok); border-color: rgba(15, 159, 110, .35); }
+    .tag.bad { color: var(--bad); border-color: rgba(214, 69, 69, .35); }
+    .tag.warn { color: var(--warn); border-color: rgba(183, 121, 31, .35); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; min-width: 960px; }
+    th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 11px 10px; font-size: 13px; vertical-align: middle; }
+    th { color: var(--muted); background: var(--panel-soft); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+    tr:last-child td { border-bottom: 0; }
+    .status { min-height: 20px; color: var(--muted); font-size: 13px; }
+    .key-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 9px; }
+    .empty { border: 1px dashed var(--line); border-radius: 8px; padding: 24px; color: var(--muted); text-align: center; }
+    .bars { display: grid; gap: 8px; }
+    .bar { display: grid; grid-template-columns: 140px minmax(0, 1fr) 70px; gap: 10px; align-items: center; }
+    .track { height: 8px; border-radius: 99px; background: var(--panel-soft); overflow: hidden; }
+    .track i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--ok)); }
+    @media (max-width: 1040px) { .shell, .layout-projects { grid-template-columns: 1fr; } aside { position: sticky; top: 0; z-index: 3; } nav { grid-template-columns: repeat(3, 1fr); } .stats, .grid.three { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 620px) { main { padding: 14px; } header, .grid.two, .grid.three, .stats { grid-template-columns: 1fr; display: grid; } nav { grid-template-columns: 1fr; } .bar { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <section id="gate" class="gate">
+    <div class="gate-card">
+      <div>
+        <h1>HYHub</h1>
+        <p class="muted">输入管理员密钥进入后台。</p>
+      </div>
+      <input id="token" type="password" placeholder="管理员密钥" />
+      <button id="gate-submit">进入后台</button>
+      <div class="status" id="gate-status"></div>
+    </div>
+  </section>
+
+  <section id="app" class="shell hidden">
+    <aside>
+      <div class="brand">
+        <h1>HYHub</h1>
+        <p class="muted">项目隔离的 API Hub</p>
+      </div>
+      <nav>
+        <button class="nav-btn active" data-page="dashboard">仪表盘</button>
+        <button class="nav-btn" data-page="projects">项目</button>
+        <button class="nav-btn" data-page="settings">设置</button>
+      </nav>
+      <button class="ghost" id="reload">刷新</button>
+      <button class="danger" id="logout">退出</button>
+    </aside>
+    <main>
+      <header>
+        <div>
+          <h2 id="page-title">仪表盘</h2>
+          <div class="muted" id="page-desc">查看整体项目、账号池和调用健康。</div>
+        </div>
+        <span class="tag mono" id="base-url"></span>
+      </header>
+
+      <section id="page-dashboard" class="page active">
+        <div class="stats">
+          <div class="stat"><b id="dash-projects">0</b><span class="muted">项目</span></div>
+          <div class="stat"><b id="dash-accounts">0</b><span class="muted">账号</span></div>
+          <div class="stat"><b id="dash-available">0</b><span class="muted">可用账号</span></div>
+          <div class="stat"><b id="dash-action">0</b><span class="muted">待处理</span></div>
+          <div class="stat"><b id="dash-calls">0</b><span class="muted">调用</span></div>
+          <div class="stat"><b id="dash-errors">0</b><span class="muted">失败</span></div>
+        </div>
+        <div class="grid two">
+          <section class="panel">
+            <div class="row"><h3>项目概览</h3><span class="muted">按账号数量排序</span></div>
+            <div id="dashboard-projects" class="list" style="margin-top:12px"></div>
+          </section>
+          <section class="panel">
+            <div class="row"><h3>最近 24 小时模型健康</h3><span class="muted">来自真实调用统计</span></div>
+            <div id="model-health" class="bars" style="margin-top:12px"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="page-projects" class="page">
+        <div class="layout-projects">
+          <section class="panel">
+            <div class="row"><h3>项目</h3><button id="new-project" class="ghost">新建</button></div>
+            <div id="project-list" class="list" style="margin-top:12px"></div>
+            <div class="status" id="project-status"></div>
+          </section>
+          <section class="grid">
+            <div class="panel">
+              <div class="row"><h3>项目信息</h3><span class="tag" id="selected-project-tag">未选择</span></div>
+              <div class="grid two" style="margin-top:12px">
+                <input id="project-id" placeholder="项目 ID（可留空）" />
+                <input id="project-name" placeholder="项目名称" />
+              </div>
+              <label class="toolbar"><input id="project-enabled" type="checkbox" checked /> 启用项目</label>
+              <div class="actions">
+                <button id="save-project">保存项目</button>
+                <button id="delete-project" class="danger">删除项目</button>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="row"><h3>上游账号池</h3><button id="clear-account" class="ghost">清空表单</button></div>
+              <div class="grid two" style="margin-top:12px">
+                <input id="account-id" placeholder="账号 ID（可留空）" />
+                <input id="account-label" placeholder="显示名称" />
+                <input id="account-base-url" placeholder="上游 Base URL" />
+                <input id="account-api-key" placeholder="上游 API Key（新账号必填）" />
+                <input id="account-weight" type="number" min="1" max="20" step="1" placeholder="权重 1-20" />
+                <select id="account-enabled"><option value="true">启用</option><option value="false">停用</option></select>
+              </div>
+              <textarea id="account-extra-headers" style="margin-top:10px" placeholder='额外请求头 JSON，例如 {"OpenAI-Organization":"org_xxx"}'></textarea>
+              <div class="actions">
+                <button id="save-account">保存账号</button>
+                <button id="test-project-accounts" class="secondary">检测当前项目</button>
+                <button id="batch-enable" class="ghost">批量启用</button>
+                <button id="batch-disable" class="ghost">批量停用</button>
+              </div>
+              <div class="status" id="account-status"></div>
+              <div id="accounts-table" style="margin-top:12px"></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="page-settings" class="page">
+        <div class="grid two">
+          <section class="panel">
+            <h3>项目 API Key</h3>
+            <p class="muted">客户端使用 Base URL 加项目 API Key 调用 /v1/*。AUTH_TOKEN 只用于管理员登录。</p>
+            <select id="settings-project"></select>
+            <div class="actions">
+              <button id="create-key">创建 API Key</button>
+              <button id="copy-base-url" class="secondary">复制 Base URL</button>
+            </div>
+            <div id="project-keys" class="list" style="margin-top:12px"></div>
+            <div class="status" id="key-status"></div>
+          </section>
+          <section class="panel">
+            <h3>路由策略</h3>
+            <div class="grid two" style="margin-top:12px">
+              <input id="max-retry-accounts" type="number" min="1" max="20" step="1" placeholder="失败重试账号数" />
+              <label class="toolbar"><input id="disable-on-failure" type="checkbox" /> 真实代理失败后自动停用账号</label>
+            </div>
+            <div class="actions"><button id="save-routing">保存路由策略</button></div>
+            <div class="status" id="routing-status"></div>
+          </section>
+          <section class="panel">
+            <h3>开放模型</h3>
+            <textarea id="open-models" placeholder="一行一个模型"></textarea>
+            <div class="grid two" style="margin-top:10px">
+              <input id="model-discovery-limit" type="number" min="1" max="50" step="1" value="8" placeholder="扫描账号数" />
+              <input id="api-test-model" placeholder="账号检测模型，默认 gpt-4.1-mini" />
+            </div>
+            <div class="actions">
+              <button id="discover-models" class="secondary">系统推荐模型</button>
+              <button id="save-models">保存开放模型</button>
+            </div>
+            <div id="discovered-models" class="list" style="margin-top:12px"></div>
+            <div class="status" id="model-status"></div>
+          </section>
+          <section class="panel">
+            <h3>导入 / 导出 / 统计</h3>
+            <p class="muted">导入导出作用于当前设置里选中的项目账号池；清空统计只清真实 API 调用统计。</p>
+            <div class="actions">
+              <button id="export-accounts" class="secondary">导出账号</button>
+              <button id="import-accounts" class="secondary">导入账号</button>
+              <button id="reset-stats" class="danger">清空统计</button>
+            </div>
+            <div class="status" id="ops-status"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </section>
+
+  <script>
+    const els = {
+      gate: document.getElementById("gate"),
+      app: document.getElementById("app"),
+      token: document.getElementById("token"),
+      gateStatus: document.getElementById("gate-status"),
+      pageTitle: document.getElementById("page-title"),
+      pageDesc: document.getElementById("page-desc"),
+      baseUrl: document.getElementById("base-url"),
+      projectList: document.getElementById("project-list"),
+      dashboardProjects: document.getElementById("dashboard-projects"),
+      modelHealth: document.getElementById("model-health"),
+      projectStatus: document.getElementById("project-status"),
+      accountStatus: document.getElementById("account-status"),
+      accountsTable: document.getElementById("accounts-table"),
+      settingsProject: document.getElementById("settings-project"),
+      projectKeys: document.getElementById("project-keys"),
+      keyStatus: document.getElementById("key-status"),
+      routingStatus: document.getElementById("routing-status"),
+      modelStatus: document.getElementById("model-status"),
+      opsStatus: document.getElementById("ops-status"),
+    };
+    const pageMeta = {
+      dashboard: ["仪表盘", "查看整体项目、账号池和调用健康。"],
+      projects: ["项目", "切换项目并管理这个项目自己的上游账号池。"],
+      settings: ["设置", "管理项目 API Key、路由策略、模型和导入导出。"],
+    };
+    let projects = [];
+    let accounts = [];
+    let summary = {};
+    let publicStatus = {};
+    let selectedProjectId = localStorage.getItem("hyhub-selected-project") || "default-rt";
+    let selectedAccountIds = new Set();
+    els.token.value = localStorage.getItem("hyhub-admin-token") || "";
+    els.baseUrl.textContent = window.location.origin + "/v1";
+    document.getElementById("api-test-model").value = localStorage.getItem("hyhub-api-test-model") || "gpt-4.1-mini";
+
+    function getToken() { return els.token.value.trim(); }
+    function status(el, message, danger) { el.textContent = message || ""; el.style.color = danger ? "var(--bad)" : "var(--muted)"; }
+    function fmt(value) { const n = Number(value || 0); return n >= 1000 ? (n / 1000).toFixed(1) + "K" : String(n); }
+    function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+    function stateOf(account) {
+      if (!account.enabled) return "disabled";
+      if ((account.unhealthyUntil || 0) > Date.now() || account.health?.lastOk === false) return "attention";
+      return "available";
+    }
+    async function api(path, options = {}) {
+      const response = await fetch(path, { ...options, headers: { ...(options.headers || {}), authorization: "Bearer " + getToken() } });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "HTTP " + response.status);
+      return data;
+    }
+    function selectedProject() { return projects.find((project) => project.id === selectedProjectId) || projects[0] || null; }
+    function projectPath(path) { return "/admin/projects/" + encodeURIComponent(selectedProjectId) + path; }
+    function parseHeaders() {
+      const raw = document.getElementById("account-extra-headers").value.trim();
+      return raw ? JSON.parse(raw) : undefined;
+    }
+    function setPage(page) {
+      document.querySelectorAll(".nav-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.page === page));
+      document.querySelectorAll(".page").forEach((section) => section.classList.toggle("active", section.id === "page-" + page));
+      els.pageTitle.textContent = pageMeta[page][0];
+      els.pageDesc.textContent = pageMeta[page][1];
+      location.hash = page;
+    }
+    function renderDashboard() {
+      document.getElementById("dash-projects").textContent = projects.length;
+      document.getElementById("dash-accounts").textContent = summary.total || 0;
+      document.getElementById("dash-available").textContent = summary.available || 0;
+      document.getElementById("dash-action").textContent = summary.actionRequired || 0;
+      document.getElementById("dash-calls").textContent = fmt(summary.calls || 0);
+      document.getElementById("dash-errors").textContent = fmt(summary.errors || 0);
+      els.dashboardProjects.innerHTML = projects.length ? projects
+        .slice().sort((a, b) => (b.accountCount || 0) - (a.accountCount || 0))
+        .map((project) => '<div class="list-item" onclick="selectProject(\\'' + escapeHtml(project.id) + '\\', true)"><div class="row"><b>' + escapeHtml(project.name) + '</b><span class="tag ' + (project.enabled ? 'ok' : 'warn') + '">' + (project.enabled ? '启用' : '停用') + '</span></div><div class="muted mono">' + escapeHtml(project.id) + '</div><div class="muted">账号 ' + (project.accountCount || 0) + ' / API Key ' + (project.keyCount || 0) + '</div></div>')
+        .join("") : '<div class="empty">暂无项目。</div>';
+      const modelHealth = publicStatus.modelHealth || [];
+      els.modelHealth.innerHTML = modelHealth.length ? modelHealth.map((item) => {
+        const pct = Math.max(2, Number(item.successRate || 0));
+        return '<div class="bar"><span class="mono">' + escapeHtml(item.model) + '</span><div class="track"><i style="width:' + pct + '%"></i></div><span class="muted">' + (item.calls || 0) + ' 次</span></div>';
+      }).join("") : '<div class="empty">暂无模型调用统计。</div>';
+    }
+    function renderProjects() {
+      els.projectList.innerHTML = projects.map((project) => '<div class="list-item ' + (project.id === selectedProjectId ? 'active' : '') + '" onclick="selectProject(\\'' + escapeHtml(project.id) + '\\')"><div class="row"><b>' + escapeHtml(project.name) + '</b><span class="tag ' + (project.enabled ? 'ok' : 'warn') + '">' + (project.enabled ? '启用' : '停用') + '</span></div><div class="muted mono">' + escapeHtml(project.id) + '</div><div class="muted">账号 ' + (project.accountCount || 0) + ' / Key ' + (project.keyCount || 0) + '</div></div>').join("");
+      const project = selectedProject();
+      document.getElementById("selected-project-tag").textContent = project ? project.id : "未选择";
+      document.getElementById("project-id").value = project?.id || "";
+      document.getElementById("project-id").disabled = !!project;
+      document.getElementById("project-name").value = project?.name || "";
+      document.getElementById("project-enabled").checked = project?.enabled !== false;
+      els.settingsProject.innerHTML = projects.map((item) => '<option value="' + escapeHtml(item.id) + '" ' + (item.id === selectedProjectId ? 'selected' : '') + '>' + escapeHtml(item.name) + '</option>').join("");
+      renderKeys();
+    }
+    function renderAccounts() {
+      selectedAccountIds = new Set([...selectedAccountIds].filter((id) => accounts.some((account) => account.id === id)));
+      if (!accounts.length) {
+        els.accountsTable.innerHTML = '<div class="empty">当前项目还没有账号。</div>';
+        return;
+      }
+      els.accountsTable.innerHTML = '<div class="table-wrap"><table><thead><tr><th></th><th>账号</th><th>状态</th><th>真实调用</th><th>检测</th><th>操作</th></tr></thead><tbody>' + accounts.map((account) => {
+        const state = stateOf(account);
+        const successRate = account.stats?.calls ? Math.round(((account.stats.successes || 0) / account.stats.calls) * 100) + "%" : "--";
+        const lastCheck = account.health?.lastCheckedAt ? new Date(account.health.lastCheckedAt).toLocaleString() : "未检测";
+        const tag = state === "available" ? '<span class="tag ok">可用</span>' : state === "attention" ? '<span class="tag bad">需处理</span>' : '<span class="tag warn">停用</span>';
+        return '<tr><td><input type="checkbox" data-check="' + escapeHtml(account.id) + '" ' + (selectedAccountIds.has(account.id) ? 'checked' : '') + ' /></td><td><b>' + escapeHtml(account.label) + '</b><div class="muted mono">' + escapeHtml(account.id) + '</div><div class="muted mono">' + escapeHtml(account.baseUrl) + '</div></td><td>' + tag + '<div class="muted">权重 ' + (account.weight || 1) + '</div></td><td><div class="mono">' + (account.stats?.calls || 0) + ' 次</div><div class="muted">成功 ' + (account.stats?.successes || 0) + ' / 失败 ' + (account.stats?.errors || 0) + ' / ' + successRate + '</div></td><td><div class="mono">' + (account.health?.checks || 0) + ' 次</div><div class="muted">' + lastCheck + '</div></td><td><div class="actions"><button class="ghost" onclick="editAccount(\\'' + escapeHtml(account.id) + '\\')">编辑</button><button class="ghost" onclick="testAccount(\\'' + escapeHtml(account.id) + '\\')">检测</button><button class="ghost" onclick="toggleAccount(\\'' + escapeHtml(account.id) + '\\',' + (!account.enabled) + ')">' + (account.enabled ? '停用' : '启用') + '</button><button class="danger" onclick="removeAccount(\\'' + escapeHtml(account.id) + '\\')">删除</button></div></td></tr>';
+      }).join("") + '</tbody></table></div>';
+      document.querySelectorAll("[data-check]").forEach((input) => input.addEventListener("change", (event) => {
+        const id = event.target.getAttribute("data-check");
+        if (event.target.checked) selectedAccountIds.add(id);
+        else selectedAccountIds.delete(id);
+      }));
+    }
+    function renderKeys() {
+      const project = selectedProject();
+      if (!project) {
+        els.projectKeys.innerHTML = '<div class="empty">先创建项目。</div>';
+        return;
+      }
+      els.projectKeys.innerHTML = project.apiKeys?.length ? project.apiKeys.map((key) => '<div class="key-row"><span class="mono">' + escapeHtml(key) + '</span><button class="ghost" onclick="copyKey(\\'' + escapeHtml(key) + '\\')">复制</button><button class="danger" onclick="deleteKey(\\'' + escapeHtml(key) + '\\')">删除</button></div>').join("") : '<div class="empty">当前项目还没有 API Key。</div>';
+    }
+    async function refreshAll() {
+      const verify = await api("/admin/verify");
+      projects = verify.projects || [];
+      summary = verify.summary || {};
+      if (!projects.some((project) => project.id === selectedProjectId)) selectedProjectId = projects[0]?.id || "default-rt";
+      await loadProjectAccounts();
+      await Promise.all([loadRouting(), loadModels(), loadPublicStatus()]);
+      renderDashboard();
+      renderProjects();
+      renderAccounts();
+    }
+    async function loadProjectAccounts() {
+      if (!selectedProjectId) return;
+      const data = await api(projectPath("/accounts"));
+      accounts = data.accounts || [];
+    }
+    async function loadPublicStatus() {
+      publicStatus = await fetch("/public/status").then((res) => res.json()).catch(() => ({}));
+    }
+    async function loadRouting() {
+      const data = await api("/admin/routing");
+      document.getElementById("max-retry-accounts").value = data.routing?.maxRetryAccounts || 3;
+      document.getElementById("disable-on-failure").checked = data.routing?.disableOnFailure === true;
+    }
+    async function loadModels() {
+      const data = await api("/admin/models");
+      document.getElementById("open-models").value = (data.models || []).join("\\n");
+    }
+    async function verifyLogin() {
+      try {
+        localStorage.setItem("hyhub-admin-token", getToken());
+        status(els.gateStatus, "验证中...");
+        els.gate.classList.add("hidden");
+        els.app.classList.remove("hidden");
+        await refreshAll();
+        setPage((location.hash || "#dashboard").slice(1) in pageMeta ? (location.hash || "#dashboard").slice(1) : "dashboard");
+        status(els.gateStatus, "");
+      } catch (error) {
+        els.app.classList.add("hidden");
+        els.gate.classList.remove("hidden");
+        status(els.gateStatus, error.message, true);
+      }
+    }
+    window.selectProject = async function(id, goProjects) {
+      selectedProjectId = id;
+      localStorage.setItem("hyhub-selected-project", id);
+      await loadProjectAccounts();
+      renderProjects();
+      renderAccounts();
+      if (goProjects) setPage("projects");
+    };
+    async function saveProject() {
+      try {
+        const id = document.getElementById("project-id").value.trim();
+        const existing = projects.some((project) => project.id === id);
+        const payload = { id: existing ? undefined : id || undefined, name: document.getElementById("project-name").value.trim() || undefined, enabled: document.getElementById("project-enabled").checked };
+        const data = await api(existing ? "/admin/projects/" + encodeURIComponent(id) : "/admin/projects", { method: existing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+        selectedProjectId = data.project.id;
+        await refreshAll();
+        status(els.projectStatus, "项目已保存。");
+      } catch (error) { status(els.projectStatus, error.message, true); }
+    }
+    async function deleteProject() {
+      const project = selectedProject();
+      if (!project) return;
+      const message = project.id === "default-rt" ? "这是默认 RT 项目，确认删除？删除后系统会在下次读取时重新创建空默认项目。" : "确认删除这个项目？";
+      if (!confirm(message)) return;
+      try {
+        await api("/admin/projects/" + encodeURIComponent(project.id), { method: "DELETE" });
+        selectedProjectId = "default-rt";
+        await refreshAll();
+        status(els.projectStatus, "项目已删除。");
+      } catch (error) { status(els.projectStatus, error.message, true); }
+    }
+    function clearAccountForm() {
+      ["account-id", "account-label", "account-base-url", "account-api-key", "account-weight", "account-extra-headers"].forEach((id) => document.getElementById(id).value = "");
+      document.getElementById("account-enabled").value = "true";
+    }
+    async function saveAccount() {
+      try {
+        const id = document.getElementById("account-id").value.trim();
+        const existing = accounts.some((account) => account.id === id);
+        const payload = {
+          id: existing ? undefined : id || undefined,
+          label: document.getElementById("account-label").value.trim(),
+          baseUrl: document.getElementById("account-base-url").value.trim(),
+          apiKey: document.getElementById("account-api-key").value.trim(),
+          weight: Number(document.getElementById("account-weight").value || 1),
+          enabled: document.getElementById("account-enabled").value === "true",
+          extraHeaders: parseHeaders(),
+        };
+        await api(existing ? projectPath("/accounts/" + encodeURIComponent(id)) : projectPath("/accounts"), { method: existing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+        clearAccountForm();
+        await refreshAll();
+        status(els.accountStatus, "账号已保存。");
+      } catch (error) { status(els.accountStatus, error.message, true); }
+    }
+    window.editAccount = function(id) {
+      const account = accounts.find((item) => item.id === id);
+      if (!account) return;
+      document.getElementById("account-id").value = account.id;
+      document.getElementById("account-label").value = account.label || "";
+      document.getElementById("account-base-url").value = account.baseUrl || "";
+      document.getElementById("account-api-key").value = "";
+      document.getElementById("account-weight").value = account.weight || 1;
+      document.getElementById("account-enabled").value = account.enabled ? "true" : "false";
+      document.getElementById("account-extra-headers").value = JSON.stringify(account.extraHeaders || {}, null, 2);
+    };
+    window.toggleAccount = async function(id, enabled) {
+      await api(projectPath("/accounts/" + encodeURIComponent(id)), { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled }) });
+      await refreshAll();
+    };
+    window.testAccount = async function(id) {
+      try {
+        const model = document.getElementById("api-test-model").value.trim() || "gpt-4.1-mini";
+        const data = await api(projectPath("/accounts/" + encodeURIComponent(id) + "/test"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "chat", model }) });
+        status(els.accountStatus, data.message || "检测通过。");
+        await refreshAll();
+      } catch (error) { status(els.accountStatus, error.message, true); }
+    };
+    window.removeAccount = async function(id) {
+      if (!confirm("确认删除这个账号？")) return;
+      await api(projectPath("/accounts/" + encodeURIComponent(id)), { method: "DELETE" });
+      await refreshAll();
+    };
+    async function batchToggle(enabled) {
+      if (!selectedAccountIds.size) return status(els.accountStatus, "先选择账号。", true);
+      await api(projectPath("/accounts/batch"), { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids: [...selectedAccountIds], enabled }) });
+      selectedAccountIds.clear();
+      await refreshAll();
+    }
+    async function createKey() {
+      try {
+        const data = await api("/admin/projects/" + encodeURIComponent(selectedProjectId) + "/keys", { method: "POST" });
+        await navigator.clipboard.writeText(data.key).catch(() => {});
+        await refreshAll();
+        status(els.keyStatus, "API Key 已创建并尝试复制。");
+      } catch (error) { status(els.keyStatus, error.message, true); }
+    }
+    window.copyKey = async function(key) { await navigator.clipboard.writeText(key); status(els.keyStatus, "API Key 已复制。"); };
+    window.deleteKey = async function(key) {
+      if (!confirm("确认删除这个 API Key？")) return;
+      await api("/admin/projects/" + encodeURIComponent(selectedProjectId) + "/keys/" + encodeURIComponent(key), { method: "DELETE" });
+      await refreshAll();
+    };
+    async function saveRouting() {
+      try {
+        await api("/admin/routing", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ maxRetryAccounts: Number(document.getElementById("max-retry-accounts").value || 3), disableOnFailure: document.getElementById("disable-on-failure").checked }) });
+        status(els.routingStatus, "路由策略已保存。");
+      } catch (error) { status(els.routingStatus, error.message, true); }
+    }
+    async function saveModels() {
+      try {
+        const models = document.getElementById("open-models").value.split(/[\\n,]+/).map((item) => item.trim()).filter(Boolean);
+        await api("/admin/models", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ models }) });
+        status(els.modelStatus, "开放模型已保存。");
+      } catch (error) { status(els.modelStatus, error.message, true); }
+    }
+    async function discoverModels() {
+      try {
+        const limit = Number(document.getElementById("model-discovery-limit").value || 8);
+        const data = await api("/admin/models/discover", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ limit }) });
+        document.getElementById("discovered-models").innerHTML = (data.recommendations || []).map((item) => '<div class="list-item" onclick="addModel(\\'' + escapeHtml(item.model) + '\\')"><b class="mono">' + escapeHtml(item.model) + '</b><span class="muted">' + (item.accounts?.length || 0) + ' 个账号返回</span></div>').join("") || '<div class="empty">没有发现模型。</div>';
+        status(els.modelStatus, "扫描完成。点击候选模型可加入列表。");
+      } catch (error) { status(els.modelStatus, error.message, true); }
+    }
+    window.addModel = function(model) {
+      const input = document.getElementById("open-models");
+      const items = new Set(input.value.split(/[\\n,]+/).map((item) => item.trim()).filter(Boolean));
+      items.add(model);
+      input.value = [...items].join("\\n");
+    };
+    async function exportAccounts() {
+      const data = await api(projectPath("/accounts/export"));
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = selectedProjectId + "-accounts.json";
+      link.click();
+      URL.revokeObjectURL(url);
+      status(els.opsStatus, "账号已导出。");
+    }
+    async function importAccounts() {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "application/json";
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        const payload = JSON.parse(await file.text());
+        await api(projectPath("/accounts/import"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+        await refreshAll();
+        status(els.opsStatus, "账号已导入。");
+      };
+      input.click();
+    }
+    async function resetStats() {
+      if (!confirm("确认清空真实 API 调用统计？")) return;
+      await api("/admin/stats/reset", { method: "POST" });
+      await refreshAll();
+      status(els.opsStatus, "统计已清空。");
+    }
+    document.querySelectorAll(".nav-btn").forEach((btn) => btn.addEventListener("click", () => setPage(btn.dataset.page)));
+    document.getElementById("gate-submit").addEventListener("click", verifyLogin);
+    els.token.addEventListener("keydown", (event) => { if (event.key === "Enter") verifyLogin(); });
+    document.getElementById("reload").addEventListener("click", refreshAll);
+    document.getElementById("logout").addEventListener("click", () => { localStorage.removeItem("hyhub-admin-token"); location.reload(); });
+    document.getElementById("new-project").addEventListener("click", () => { selectedProjectId = ""; document.getElementById("project-id").disabled = false; document.getElementById("project-id").value = ""; document.getElementById("project-name").value = ""; document.getElementById("project-enabled").checked = true; });
+    document.getElementById("save-project").addEventListener("click", saveProject);
+    document.getElementById("delete-project").addEventListener("click", deleteProject);
+    document.getElementById("clear-account").addEventListener("click", clearAccountForm);
+    document.getElementById("save-account").addEventListener("click", saveAccount);
+    document.getElementById("test-project-accounts").addEventListener("click", async () => { const data = await api(projectPath("/accounts/test-all"), { method: "POST" }); status(els.accountStatus, "检测完成：" + (data.okCount || 0) + "/" + (data.total || 0) + " 可用。"); await refreshAll(); });
+    document.getElementById("batch-enable").addEventListener("click", () => batchToggle(true));
+    document.getElementById("batch-disable").addEventListener("click", () => batchToggle(false));
+    document.getElementById("settings-project").addEventListener("change", async (event) => { await window.selectProject(event.target.value); renderKeys(); });
+    document.getElementById("create-key").addEventListener("click", createKey);
+    document.getElementById("copy-base-url").addEventListener("click", async () => { await navigator.clipboard.writeText(window.location.origin + "/v1"); status(els.keyStatus, "Base URL 已复制。"); });
+    document.getElementById("save-routing").addEventListener("click", saveRouting);
+    document.getElementById("save-models").addEventListener("click", saveModels);
+    document.getElementById("discover-models").addEventListener("click", discoverModels);
+    document.getElementById("export-accounts").addEventListener("click", exportAccounts);
+    document.getElementById("import-accounts").addEventListener("click", importAccounts);
+    document.getElementById("reset-stats").addEventListener("click", resetStats);
+    document.getElementById("api-test-model").addEventListener("change", (event) => localStorage.setItem("hyhub-api-test-model", event.target.value));
+    if (getToken()) verifyLogin();
+    else status(els.gateStatus, "先输入管理员密钥。");
+  </script>
+</body>
+</html>`;
+}
+
 async function readJsonBody<T>(request: Request): Promise<T> {
   try {
     return await request.json() as T;
@@ -2166,7 +2758,7 @@ export default {
     const pathname = url.pathname;
     if (pathname === "/health") return json({ ok: true });
     if (pathname === "/") return html(renderMonitorPage());
-    if (pathname === "/admin" || pathname === "/admin/") return html(renderAdminPage());
+    if (pathname === "/admin" || pathname === "/admin/") return html(renderAdminPageV2());
     if (pathname === "/admin/ui") {
       url.pathname = "/admin";
       return Response.redirect(url.toString(), 302);
@@ -2187,8 +2779,13 @@ export class RouterState extends DurableObject<Env> {
 
   private async getAccounts(): Promise<AccountRecord[]> {
     if (this.accountsCache) return this.accountsCache;
-    const saved = await this.ctx.storage.get<AccountRecord[]>(ACCOUNTS_KEY);
-    this.accountsCache = Array.isArray(saved) ? saved : [];
+    const saved = await this.ctx.storage.get<Array<AccountRecord & { projectId?: string }>>(ACCOUNTS_KEY);
+    const accounts = Array.isArray(saved)
+      ? saved.map((account) => ({ ...account, projectId: account.projectId || DEFAULT_PROJECT_ID }))
+      : [];
+    const changed = Array.isArray(saved) && saved.some((account) => !account.projectId);
+    this.accountsCache = accounts;
+    if (changed) await this.ctx.storage.put(ACCOUNTS_KEY, accounts);
     return this.accountsCache;
   }
 
@@ -2199,8 +2796,27 @@ export class RouterState extends DurableObject<Env> {
 
   private async getProjects(): Promise<ProjectRecord[]> {
     if (this.projectsCache) return this.projectsCache;
-    const saved = await this.ctx.storage.get<ProjectRecord[]>(PROJECTS_KEY);
-    this.projectsCache = Array.isArray(saved) ? saved : [];
+    const saved = await this.ctx.storage.get<Array<ProjectRecord & { accountIds?: string[] }>>(PROJECTS_KEY);
+    let projects = Array.isArray(saved)
+      ? saved.map((project) => ({
+        id: project.id,
+        name: project.name,
+        enabled: project.enabled !== false,
+        apiKeys: Array.isArray(project.apiKeys) ? project.apiKeys : [],
+        createdAt: project.createdAt ?? Date.now(),
+        updatedAt: project.updatedAt ?? Date.now(),
+      }))
+      : [];
+    const existingDefault = projects.find((project) => project.id === DEFAULT_PROJECT_ID);
+    if (existingDefault) {
+      existingDefault.name = existingDefault.name || DEFAULT_PROJECT_NAME;
+    } else {
+      projects = [createDefaultProject(), ...projects];
+    }
+    this.projectsCache = projects;
+    if (!Array.isArray(saved) || !saved.some((project) => project.id === DEFAULT_PROJECT_ID) || saved.some((project) => "accountIds" in project)) {
+      await this.ctx.storage.put(PROJECTS_KEY, projects);
+    }
     return this.projectsCache;
   }
 
@@ -2213,6 +2829,12 @@ export class RouterState extends DurableObject<Env> {
     if (!apiKey.trim()) return null;
     const projects = await this.getProjects();
     return projects.find((project) => project.enabled && project.apiKeys.includes(apiKey)) ?? null;
+  }
+
+  private async getProjectOrNotFound(projectId: string): Promise<ProjectRecord | Response> {
+    const projects = await this.getProjects();
+    const project = projects.find((item) => item.id === projectId);
+    return project ?? json({ error: "Project not found" }, { status: 404 });
   }
 
   private async getStatsMap(): Promise<Record<string, AccountStat>> {
@@ -2389,13 +3011,15 @@ export class RouterState extends DurableObject<Env> {
     await this.saveHealthMap(healthMap);
   }
 
-  private async getAccountsWithStats(): Promise<PublicAccount[]> {
+  private async getAccountsWithStats(projectId?: string): Promise<PublicAccount[]> {
     const [accounts, statsMap, healthMap] = await Promise.all([
       this.getAccounts(),
       this.getStatsMap(),
       this.getHealthMap(),
     ]);
-    return accounts.map((account) => toPublicAccount(
+    return accounts
+    .filter((account) => !projectId || account.projectId === projectId)
+    .map((account) => toPublicAccount(
       account,
       statsMap[account.id] ?? createEmptyStat(),
       healthMap[account.id] ?? createEmptyHealth(),
@@ -2515,6 +3139,20 @@ export class RouterState extends DurableObject<Env> {
     return account;
   }
 
+  private async pickProjectAccount(projectId: string, excluded: Set<string> = new Set()): Promise<AccountRecord | null> {
+    const accounts = await this.getAccounts();
+    const now = Date.now();
+    const enabled = accounts.filter((item) => item.projectId === projectId && item.enabled && !excluded.has(item.id));
+    const healthy = enabled.filter((item) => (item.unhealthyUntil ?? 0) <= now);
+    const pool = healthy.length > 0 ? healthy : enabled;
+    if (pool.length === 0) return null;
+    const weightedPool = pool.flatMap((account) => Array.from({ length: normalizeWeight(account.weight) }, () => account));
+    const cursor = await this.getCursor();
+    const account = weightedPool[cursor % weightedPool.length];
+    await this.setCursor(cursor + 1);
+    return account;
+  }
+
   private buildUpstreamUrl(account: AccountRecord, requestUrl: URL): string {
     return `${account.baseUrl}${requestUrl.pathname}${requestUrl.search}`;
   }
@@ -2532,10 +3170,6 @@ export class RouterState extends DurableObject<Env> {
   private async proxyRequest(request: Request): Promise<Response> {
     const project = await this.findProjectByApiKey(getBearer(request));
     if (!project) return json({ error: "Invalid project API key" }, { status: 401 });
-    const projectAccountIds = new Set(project.accountIds);
-    if (projectAccountIds.size === 0) {
-      return json({ error: "Project has no accounts" }, { status: 503 });
-    }
     const requestUrl = new URL(request.url);
     if (!requestUrl.pathname.startsWith("/v1/")) {
       return json({ error: "Only /v1/* routes are supported" }, { status: 404 });
@@ -2572,14 +3206,14 @@ export class RouterState extends DurableObject<Env> {
     }
     const excluded = new Set<string>();
     const routing = await this.getRoutingSettings();
-    const enabledCount = (await this.getAccounts()).filter((item) => item.enabled && projectAccountIds.has(item.id)).length;
+    const enabledCount = (await this.getAccounts()).filter((item) => item.projectId === project.id && item.enabled).length;
     const maxAttempts = Math.max(1, Math.min(routing.maxRetryAccounts, enabledCount || routing.maxRetryAccounts));
     let attempts = 0;
     while (true) {
       if (attempts >= maxAttempts) {
         return json({ error: "Retry limit reached", attempts, maxAttempts }, { status: 502 });
       }
-      const account = await this.pickAccount(excluded, projectAccountIds);
+      const account = await this.pickProjectAccount(project.id, excluded);
       if (!account) return json({ error: "No available accounts" }, { status: 503 });
       attempts += 1;
       const startedAt = Date.now();
@@ -2632,26 +3266,45 @@ export class RouterState extends DurableObject<Env> {
     const pathname = url.pathname;
 
     if (pathname === "/admin/verify" && request.method === "GET") {
-      const [accounts, statsMap, healthMap] = await Promise.all([
+      const [projects, accounts, statsMap, healthMap] = await Promise.all([
+        this.getProjects(),
         this.getAccounts(),
         this.getStatsMap(),
         this.getHealthMap(),
       ]);
-      return json({ ok: true, summary: summarizeAccounts(accounts, statsMap, healthMap) });
+      return json({ ok: true, projects: projects.map((project) => toPublicProject(project, accounts.filter((account) => account.projectId === project.id).length)), summary: summarizeAccounts(accounts, statsMap, healthMap) });
     }
 
-    if (pathname === "/admin/accounts" && request.method === "GET") {
+    const legacyAccountsMatch = pathname.match(/^\/admin\/accounts(?:\/([^/]+))?(?:\/(test))?$/);
+    const projectAccountsRootMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/accounts$/);
+    const projectAccountsBatchMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/accounts\/batch$/);
+    const projectAccountsTestAllMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/accounts\/test-all$/);
+    const projectAccountItemMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/accounts\/([^/]+)$/);
+    const projectAccountTestMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/accounts\/([^/]+)\/test$/);
+
+    const listProjectId = projectAccountsRootMatch?.[1]
+      ? decodeURIComponent(projectAccountsRootMatch[1])
+      : pathname === "/admin/accounts"
+        ? DEFAULT_PROJECT_ID
+        : "";
+
+    if (listProjectId && request.method === "GET") {
+      const project = await this.getProjectOrNotFound(listProjectId);
+      if (project instanceof Response) return project;
       const [accounts, statsMap, healthMap, records] = await Promise.all([
         this.getAccounts(),
         this.getStatsMap(),
         this.getHealthMap(),
-        this.getAccountsWithStats(),
+        this.getAccountsWithStats(listProjectId),
       ]);
-      return json({ accounts: records, summary: summarizeAccounts(accounts, statsMap, healthMap) });
+      const scoped = accounts.filter((account) => account.projectId === listProjectId);
+      return json({ accounts: records, summary: summarizeAccounts(scoped, statsMap, healthMap), project: toPublicProject(project, scoped.length) });
     }
 
-    if (pathname === "/admin/accounts" && request.method === "POST") {
-      const payload = sanitizeAccountInput(await readJsonBody<AccountInput>(request));
+    if (listProjectId && request.method === "POST") {
+      const project = await this.getProjectOrNotFound(listProjectId);
+      if (project instanceof Response) return project;
+      const payload = sanitizeAccountInput(await readJsonBody<AccountInput>(request), listProjectId);
       const accounts = await this.getAccounts();
       const next = accounts.filter((item) => item.id !== payload.id);
       next.push(payload);
@@ -2667,12 +3320,16 @@ export class RouterState extends DurableObject<Env> {
       }, { status: 201 });
     }
 
-    if (pathname === "/admin/accounts/export" && request.method === "GET") {
+    if ((pathname === "/admin/accounts/export" || pathname.match(/^\/admin\/projects\/([^/]+)\/accounts\/export$/)) && request.method === "GET") {
+      const projectId = pathname === "/admin/accounts/export" ? DEFAULT_PROJECT_ID : decodeURIComponent(pathname.match(/^\/admin\/projects\/([^/]+)\/accounts\/export$/)?.[1] || DEFAULT_PROJECT_ID);
       const accounts = await this.getAccounts();
+      const scoped = accounts.filter((account) => account.projectId === projectId);
       return json({
         exportedAt: Date.now(),
-        accounts: accounts.map((account) => ({
+        projectId,
+        accounts: scoped.map((account) => ({
           id: account.id,
+          projectId: account.projectId,
           label: account.label,
           baseUrl: account.baseUrl,
           apiKey: account.apiKey,
@@ -2683,7 +3340,11 @@ export class RouterState extends DurableObject<Env> {
       });
     }
 
-    if (pathname === "/admin/accounts/import" && request.method === "POST") {
+    const importProjectMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/accounts\/import$/);
+    if ((pathname === "/admin/accounts/import" || importProjectMatch) && request.method === "POST") {
+      const projectId = importProjectMatch ? decodeURIComponent(importProjectMatch[1]) : DEFAULT_PROJECT_ID;
+      const project = await this.getProjectOrNotFound(projectId);
+      if (project instanceof Response) return project;
       const payload = await readJsonBody<{ accounts?: AccountInput[] }>(request);
       const incoming = Array.isArray(payload.accounts) ? payload.accounts : [];
       const accounts = await this.getAccounts();
@@ -2691,7 +3352,7 @@ export class RouterState extends DurableObject<Env> {
       let imported = 0;
 
       for (const item of incoming) {
-        const normalized = sanitizeAccountInput(item);
+        const normalized = sanitizeAccountInput(item, projectId);
         const index = next.findIndex((existing) => existing.id === normalized.id);
         if (index >= 0) next[index] = normalized;
         else next.push(normalized);
@@ -2702,12 +3363,18 @@ export class RouterState extends DurableObject<Env> {
       return json({ ok: true, imported });
     }
 
-    if (pathname === "/admin/accounts/batch" && request.method === "PATCH") {
+    const batchProjectId = projectAccountsBatchMatch?.[1]
+      ? decodeURIComponent(projectAccountsBatchMatch[1])
+      : pathname === "/admin/accounts/batch"
+        ? DEFAULT_PROJECT_ID
+        : "";
+    if (batchProjectId && request.method === "PATCH") {
       const payload = await readJsonBody<{ ids: string[]; enabled: boolean }>(request);
       const ids = new Set(payload.ids ?? []);
       const accounts = await this.getAccounts();
       let changed = 0;
       for (const account of accounts) {
+        if (account.projectId !== batchProjectId) continue;
         if (!ids.has(account.id)) continue;
         account.enabled = payload.enabled;
         changed += 1;
@@ -2717,8 +3384,8 @@ export class RouterState extends DurableObject<Env> {
     }
 
     if (pathname === "/admin/projects" && request.method === "GET") {
-      const projects = await this.getProjects();
-      return json({ projects: projects.map(toPublicProject) });
+      const [projects, accounts] = await Promise.all([this.getProjects(), this.getAccounts()]);
+      return json({ projects: projects.map((project) => toPublicProject(project, accounts.filter((account) => account.projectId === project.id).length)) });
     }
 
     if (pathname === "/admin/projects" && request.method === "POST") {
@@ -2728,7 +3395,7 @@ export class RouterState extends DurableObject<Env> {
       const next = projects.filter((item) => item.id !== project.id);
       next.push(project);
       await this.saveProjects(next);
-      return json({ ok: true, project: toPublicProject(project) }, { status: 201 });
+      return json({ ok: true, project: toPublicProject(project, 0) }, { status: 201 });
     }
 
     const projectKeyMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/keys\/([^/]+)$/);
@@ -2743,7 +3410,8 @@ export class RouterState extends DurableObject<Env> {
       project.apiKeys.push(key);
       project.updatedAt = Date.now();
       await this.saveProjects(projects);
-      return json({ ok: true, key, project: toPublicProject(project) }, { status: 201 });
+      const accounts = await this.getAccounts();
+      return json({ ok: true, key, project: toPublicProject(project, accounts.filter((account) => account.projectId === project.id).length) }, { status: 201 });
     }
 
     if (projectKeyMatch && request.method === "DELETE") {
@@ -2755,7 +3423,8 @@ export class RouterState extends DurableObject<Env> {
       project.apiKeys = project.apiKeys.filter((item) => item !== key);
       project.updatedAt = Date.now();
       await this.saveProjects(projects);
-      return json({ ok: true, project: toPublicProject(project) });
+      const accounts = await this.getAccounts();
+      return json({ ok: true, project: toPublicProject(project, accounts.filter((account) => account.projectId === project.id).length) });
     }
 
     if (projectMatch) {
@@ -2765,7 +3434,8 @@ export class RouterState extends DurableObject<Env> {
       if (!project) return json({ error: "Project not found" }, { status: 404 });
 
       if (request.method === "GET") {
-        return json({ project: toPublicProject(project) });
+        const accounts = await this.getAccounts();
+        return json({ project: toPublicProject(project, accounts.filter((account) => account.projectId === project.id).length) });
       }
 
       if (request.method === "PATCH") {
@@ -2774,11 +3444,25 @@ export class RouterState extends DurableObject<Env> {
         const index = projects.findIndex((item) => item.id === project.id);
         projects[index] = next;
         await this.saveProjects(projects);
-        return json({ ok: true, project: toPublicProject(next) });
+        const accounts = await this.getAccounts();
+        return json({ ok: true, project: toPublicProject(next, accounts.filter((account) => account.projectId === next.id).length) });
       }
 
       if (request.method === "DELETE") {
-        await this.saveProjects(projects.filter((item) => item.id !== project.id));
+        const accounts = await this.getAccounts();
+        const removedIds = new Set(accounts.filter((account) => account.projectId === project.id).map((account) => account.id));
+        await this.saveAccounts(accounts.filter((account) => account.projectId !== project.id));
+        const statsMap = await this.getStatsMap();
+        const healthMap = await this.getHealthMap();
+        for (const id of removedIds) {
+          delete statsMap[id];
+          delete healthMap[id];
+        }
+        await Promise.all([
+          this.saveStatsMap(statsMap),
+          this.saveHealthMap(healthMap),
+          this.saveProjects(projects.filter((item) => item.id !== project.id)),
+        ]);
         return json({ ok: true });
       }
     }
@@ -2878,22 +3562,28 @@ export class RouterState extends DurableObject<Env> {
       });
     }
 
-    if (pathname === "/admin/accounts/test-all" && request.method === "POST") {
+    const testAllProjectId = projectAccountsTestAllMatch?.[1]
+      ? decodeURIComponent(projectAccountsTestAllMatch[1])
+      : pathname === "/admin/accounts/test-all"
+        ? DEFAULT_PROJECT_ID
+        : "";
+    if (testAllProjectId && request.method === "POST") {
       const accounts = await this.getAccounts();
-      const targets = accounts.filter((account) => account.enabled);
+      const targets = accounts.filter((account) => account.projectId === testAllProjectId && account.enabled);
       const results = await Promise.all(targets.map((account) => this.probeAccount(account)));
       const okCount = results.filter((item) => item.ok).length;
       return json({ ok: okCount === targets.length, total: targets.length, okCount });
     }
 
-    const testMatch = pathname.match(/^\/admin\/accounts\/([^/]+)\/test$/);
-    const itemMatch = pathname.match(/^\/admin\/accounts\/([^/]+)$/);
+    const testMatch = projectAccountTestMatch ?? (pathname.match(/^\/admin\/accounts\/([^/]+)\/test$/) ? ["", DEFAULT_PROJECT_ID, pathname.match(/^\/admin\/accounts\/([^/]+)\/test$/)?.[1] || ""] : null);
+    const itemMatch = projectAccountItemMatch ?? (pathname.match(/^\/admin\/accounts\/([^/]+)$/) ? ["", DEFAULT_PROJECT_ID, pathname.match(/^\/admin\/accounts\/([^/]+)$/)?.[1] || ""] : null);
     const match = testMatch ?? itemMatch;
     if (!match) return json({ error: "Not found" }, { status: 404 });
 
-    const accountId = decodeURIComponent(match[1]);
+    const accountProjectId = decodeURIComponent(match[1]);
+    const accountId = decodeURIComponent(match[2]);
     const accounts = await this.getAccounts();
-    const target = accounts.find((item) => item.id === accountId);
+    const target = accounts.find((item) => item.id === accountId && item.projectId === accountProjectId);
     if (!target) return json({ error: "Account not found" }, { status: 404 });
 
     if (request.method === "GET" && itemMatch) {
@@ -2934,6 +3624,7 @@ export class RouterState extends DurableObject<Env> {
       if (typeof payload.enabled === "boolean") target.enabled = payload.enabled;
       if (payload.weight !== undefined) target.weight = normalizeWeight(payload.weight);
       if (payload.extraHeaders && typeof payload.extraHeaders === "object") target.extraHeaders = payload.extraHeaders;
+      target.projectId = accountProjectId;
       await this.saveAccounts(accounts);
       const [statsMap, healthMap] = await Promise.all([this.getStatsMap(), this.getHealthMap()]);
       return json({

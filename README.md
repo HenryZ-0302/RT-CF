@@ -8,7 +8,7 @@ HYHub separates three things:
 - upstream accounts: user-provided API keys and base URLs
 - projects: grouped upstream accounts with their own client-facing API keys
 
-The client calls HYHub like a normal OpenAI-compatible endpoint. HYHub verifies the project API key, finds that project's selected upstream account group, then round-robins within that group.
+The client calls HYHub like a normal OpenAI-compatible endpoint. HYHub verifies the project API key, finds that project's own upstream account pool, then round-robins within that pool.
 
 ## Pages
 
@@ -18,6 +18,12 @@ After deploy, open:
 - `/admin` for the HYHub management console
 
 The public monitor only shows aggregate availability, usage, and health-check status. It does not expose account details, project keys, or management actions.
+
+The admin console has three pages:
+
+- Dashboard: global project, account, availability, usage, and 24-hour model health overview
+- Projects: switch projects and manage that project's upstream accounts
+- Settings: manage project API keys, Base URL, routing policy, open models, import/export, and stats reset
 
 ## Required secrets
 
@@ -33,10 +39,9 @@ Optional:
 ## Admin flow
 
 1. Log in to `/admin` with `AUTH_TOKEN`.
-2. Add upstream accounts with their own `baseUrl` and `apiKey`.
-3. Create one or more projects.
-4. Select a project, tick the upstream accounts that belong to it, then save the project.
-5. Create a project API key and give that key to the client.
+2. Use the default `RT 默认项目` or create another project.
+3. Add upstream accounts inside that project with their own `baseUrl` and `apiKey`.
+4. Create a project API key in Settings and give that key to the client.
 
 `AUTH_TOKEN` is not used for proxy requests and is not used as a fallback upstream account key.
 
@@ -46,7 +51,7 @@ All admin endpoints require:
 
 `Authorization: Bearer <AUTH_TOKEN>`
 
-### Accounts
+### Default project account compatibility
 
 - `GET /admin/accounts`
 - `POST /admin/accounts`
@@ -55,11 +60,27 @@ All admin endpoints require:
 - `DELETE /admin/accounts/:id`
 - `POST /admin/accounts/:id/test`
 
+These legacy routes operate on the default `default-rt` project.
+
+### Project accounts
+
+- `GET /admin/projects/:projectId/accounts`
+- `POST /admin/projects/:projectId/accounts`
+- `GET /admin/projects/:projectId/accounts/:accountId`
+- `PATCH /admin/projects/:projectId/accounts/:accountId`
+- `DELETE /admin/projects/:projectId/accounts/:accountId`
+- `POST /admin/projects/:projectId/accounts/:accountId/test`
+- `PATCH /admin/projects/:projectId/accounts/batch`
+- `POST /admin/projects/:projectId/accounts/test-all`
+- `GET /admin/projects/:projectId/accounts/export`
+- `POST /admin/projects/:projectId/accounts/import`
+
 Example account:
 
 ```json
 {
   "id": "acc-1",
+  "projectId": "default-rt",
   "label": "OpenAI account",
   "baseUrl": "https://api.openai.com",
   "apiKey": "sk-xxx",
@@ -86,8 +107,7 @@ Example project:
 {
   "id": "proj-main",
   "name": "Main API",
-  "enabled": true,
-  "accountIds": ["acc-1", "acc-2"]
+  "enabled": true
 }
 ```
 
