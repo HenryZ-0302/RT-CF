@@ -61,6 +61,34 @@ type PublicAccount = {
   health: AccountHealth;
 };
 
+type ProjectRecord = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  accountIds: string[];
+  apiKeys: string[];
+  createdAt: number;
+  updatedAt: number;
+};
+
+type ProjectInput = {
+  id?: string;
+  name?: string;
+  enabled?: boolean;
+  accountIds?: string[];
+};
+
+type PublicProject = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  accountIds: string[];
+  apiKeys: string[];
+  keyCount: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
 type RoutingSettings = {
   maxRetryAccounts: number;
   disableOnFailure: boolean;
@@ -88,6 +116,7 @@ const HEALTH_KEY = "health";
 const ROUTING_KEY = "routing";
 const MODELS_KEY = "models";
 const MODEL_HOURLY_KEY = "model_hourly";
+const PROJECTS_KEY = "projects";
 
 function normalizeWeight(value: unknown): number {
   const weight = Number(value ?? 1);
@@ -170,6 +199,10 @@ function getBearer(request: Request): string {
   return match?.[1] ?? "";
 }
 
+function jsString(value: unknown): string {
+  return JSON.stringify(String(value ?? "")).replace(/</g, "\\u003c");
+}
+
 function normalizeBaseUrl(raw: string): string {
   return raw.trim().replace(/\/+$/, "");
 }
@@ -207,13 +240,63 @@ function createEmptyHealth(): AccountHealth {
 }
 
 function generateAccountId(): string {
-  return `rt-${Math.floor(100000000 + Math.random() * 900000000)}`;
+  return `acc-${Math.floor(100000000 + Math.random() * 900000000)}`;
 }
 
-function sanitizeAccountInput(payload: AccountInput, fallbackApiKey: string): AccountRecord {
+function generateProjectId(): string {
+  return `proj-${Math.floor(100000000 + Math.random() * 900000000)}`;
+}
+
+function generateProjectApiKey(): string {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return `hy_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function sanitizeAccountIds(value: unknown): string[] {
+  const incoming = Array.isArray(value) ? value : [];
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const item of incoming) {
+    const id = String(item ?? "").trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
+
+function sanitizeProjectInput(payload: ProjectInput, existing?: ProjectRecord): ProjectRecord {
+  const now = Date.now();
+  const id = payload.id?.trim() || existing?.id || generateProjectId();
+  return {
+    id,
+    name: payload.name?.trim() || existing?.name || id,
+    enabled: payload.enabled ?? existing?.enabled ?? true,
+    accountIds: sanitizeAccountIds(payload.accountIds ?? existing?.accountIds ?? []),
+    apiKeys: existing?.apiKeys ?? [],
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
+}
+
+function toPublicProject(project: ProjectRecord): PublicProject {
+  return {
+    id: project.id,
+    name: project.name,
+    enabled: project.enabled,
+    accountIds: project.accountIds,
+    apiKeys: project.apiKeys,
+    keyCount: project.apiKeys.length,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
+  };
+}
+
+function sanitizeAccountInput(payload: AccountInput): AccountRecord {
   const resolvedId = payload.id?.trim() || generateAccountId();
   if (!payload.baseUrl?.trim()) throw new Error("Account baseUrl is required");
-  const resolvedApiKey = payload.apiKey?.trim() || fallbackApiKey.trim();
+  const resolvedApiKey = payload.apiKey?.trim() || "";
   if (!resolvedApiKey) throw new Error("Account apiKey is required");
   return {
     id: resolvedId,
@@ -741,7 +824,7 @@ function renderAdminPage(): string {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RT Account Router</title>
+  <title>HYHub</title>
   <style>
     :root {
       color-scheme: light dark;
@@ -905,6 +988,43 @@ function renderAdminPage(): string {
       transition: width 680ms cubic-bezier(0.22, 1, 0.36, 1);
       box-shadow: 0 0 16px rgba(43, 212, 168, 0.22);
     }
+    .attention-queue {
+      display: grid;
+      gap: 10px;
+      margin: 0 0 16px;
+      padding: 12px;
+      border: 1px solid rgba(176, 113, 35, 0.24);
+      border-radius: 8px;
+      background: rgba(255, 250, 241, 0.54);
+    }
+    .attention-queue.clean { border-color: rgba(20, 134, 109, 0.18); }
+    .attention-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .attention-head h3 { margin: 0 0 4px; font-size: 15px; }
+    .attention-list {
+      display: grid;
+      max-height: 340px;
+      overflow: auto;
+      border-top: 1px solid var(--line);
+    }
+    .attention-row {
+      display: grid;
+      grid-template-columns: minmax(190px, 0.9fr) minmax(260px, 1.2fr) minmax(150px, 0.55fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--line);
+      animation: rowIn 360ms ease-out both;
+    }
+    .attention-row:last-child { border-bottom: 0; }
+    .attention-title { display: grid; gap: 4px; min-width: 0; }
+    .attention-title b, .attention-error { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .attention-recovery { color: var(--warn); }
     .filters { display: grid; grid-template-columns: minmax(220px, 1fr) 170px 170px; gap: 10px; width: min(100%, 680px); }
     select {
       width: 100%;
@@ -1055,17 +1175,18 @@ function renderAdminPage(): string {
       .endpoint-box { background: rgba(43, 41, 37, 0.54); }
     }
     @media (max-width: 1180px) { .stats { grid-template-columns: repeat(4, 1fr); } }
+    @media (max-width: 1120px) { .attention-row { grid-template-columns: 1fr 1fr; } .attention-row .inline-actions { justify-content: flex-start; } }
     @media (max-width: 860px) { .header, .top, .grid.two, .fleet-board, .stats, .filters { grid-template-columns: 1fr 1fr; } .header { align-items: start; } }
-    @media (max-width: 560px) { .header, .top, .grid.two, .fleet-board, .stats, .filters { grid-template-columns: 1fr; } }
+    @media (max-width: 560px) { .header, .top, .grid.two, .fleet-board, .stats, .filters, .attention-row { grid-template-columns: 1fr; } .attention-title b, .attention-error { white-space: normal; } }
   </style>
 </head>
 <body>
   <section id="gate" class="gate">
     <div class="gate-card">
-      <h1>RT Account Router</h1>
-      <p>先输入服务访问密码完成验证，再进入多账号轮询控制台。</p>
+      <h1>HYHub</h1>
+      <p>先输入管理员密钥完成验证，再进入 API Hub 控制台。</p>
       <div class="field" style="margin-top:18px">
-        <input id="token" type="password" placeholder="请输入服务访问密码" />
+        <input id="token" type="password" placeholder="请输入管理员密钥" />
         <button id="gate-submit">进入控制台</button>
       </div>
       <div class="status" id="gate-status"></div>
@@ -1076,8 +1197,8 @@ function renderAdminPage(): string {
     <div class="header">
       <div>
         <div class="kicker">Operations console</div>
-        <h1>RT Account Router</h1>
-        <p class="muted">面向日常值守的账号池控制台：先看整体状态，再处理需要关注的节点。</p>
+        <h1>HYHub</h1>
+        <p class="muted">先管理项目和对外 API Key，再把项目绑定到指定的上游账号组。</p>
       </div>
       <div class="actions" style="margin-top:0">
         <button class="secondary" id="reload">刷新</button>
@@ -1101,16 +1222,41 @@ function renderAdminPage(): string {
 
     <div class="top">
       <section class="card">
-        <div class="kicker">Account editor</div>
-        <h2 style="margin:0 0 8px;font-size:18px">添加 / 编辑账号</h2>
-        <p class="muted" style="margin:0 0 14px">账号权重越高，被轮询到的比例越高。编辑账号会载入到这里，保存后回到账号池查看状态。</p>
+        <div class="kicker">Project manager</div>
+        <h2 style="margin:0 0 8px;font-size:18px">项目 / API Key</h2>
+        <p class="muted" style="margin:0 0 14px">每个项目都有自己的对外 API Key，并且只会在选中的上游账号里轮询。</p>
+        <div class="grid two">
+          <input id="project-id" placeholder="项目 ID（可留空）" />
+          <input id="project-name" placeholder="项目名称" />
+        </div>
+        <label class="muted" style="display:flex;align-items:center;gap:8px;margin-top:12px">
+          <input id="project-enabled" class="check" type="checkbox" checked />
+          启用项目
+        </label>
+        <div class="actions">
+          <button id="save-project">保存项目</button>
+          <button class="secondary" id="clear-project">清空项目</button>
+          <button class="secondary" id="generate-project-key">创建 API Key</button>
+        </div>
+        <div class="endpoint-box">
+          <span class="mono muted" id="project-endpoint">/v1</span>
+          <button class="secondary" id="copy-endpoint">复制 Base URL</button>
+        </div>
+        <div id="projects" class="rank-list" style="margin-top:14px"></div>
+        <div class="status" id="project-status"></div>
+      </section>
+
+      <section class="card">
+        <div class="kicker">Upstream account editor</div>
+        <h2 style="margin:0 0 8px;font-size:18px">上游账号管理</h2>
+        <p class="muted" style="margin:0 0 14px">把用户自己的 API Key 和 Base URL 填进来，再在项目里选择哪些账号参与轮询。</p>
         <div class="grid two">
           <input id="id" placeholder="账号 ID（可留空）" />
           <input id="label" placeholder="显示名称，可留空" />
         </div>
         <div class="grid two" style="margin-top:10px">
           <input id="baseUrl" placeholder="上游 Base URL" />
-          <input id="apiKey" placeholder="上游 API Key（可留空）" />
+          <input id="apiKey" placeholder="上游 API Key（必填）" />
         </div>
         <div class="grid two" style="margin-top:10px">
           <input id="weight" type="number" min="1" max="20" step="1" placeholder="权重 1-20，默认 1" />
@@ -1134,14 +1280,10 @@ function renderAdminPage(): string {
       <section class="card">
         <div class="kicker">Console tools</div>
         <h2 style="margin:0 0 8px;font-size:18px">控制台</h2>
-        <p class="muted" style="margin:0 0 14px">检测只更新账号可用性，不计入真实 API 请求数。代理端点可直接复制到客户端。</p>
+        <p class="muted" style="margin:0 0 14px">检测只更新账号可用性，不计入真实 API 请求数。环境变量里的 AUTH_TOKEN 现在只用于管理员登录。</p>
         <div class="field">
           <input id="current-token" type="password" disabled />
           <input id="api-test-model" placeholder="API 检测模型，默认 gpt-4.1-mini" />
-        </div>
-        <div class="endpoint-box">
-          <span class="mono muted" id="proxy-endpoint">/v1</span>
-          <button class="secondary" id="copy-endpoint">复制端点</button>
         </div>
         <div class="model-editor">
           <textarea id="open-models" placeholder="开放模型，一行一个，例如&#10;gpt-4.1-mini&#10;gpt-4o-mini"></textarea>
@@ -1167,8 +1309,8 @@ function renderAdminPage(): string {
     <section class="card">
       <div class="row">
         <div>
-          <div class="kicker">Node pool</div>
-          <h2 style="margin:0 0 8px;font-size:18px">账号池</h2>
+          <div class="kicker">Upstream account pool</div>
+          <h2 style="margin:0 0 8px;font-size:18px">上游账号池</h2>
           <p class="muted" style="margin:0">真实调用统计和健康检测状态已分开，账号多时先看筛选后的主表。</p>
         </div>
       </div>
@@ -1183,6 +1325,7 @@ function renderAdminPage(): string {
           <div id="traffic-rank" class="rank-list" style="margin-top:10px"></div>
         </div>
       </div>
+      <div id="attention-queue" class="attention-queue clean"></div>
       <div class="toolbar-meta">
         <span id="visible-count">显示 0 / 0 个账号</span>
         <span id="selected-count">已选 0 个</span>
@@ -1223,7 +1366,9 @@ function renderAdminPage(): string {
     const statusEl = document.getElementById("status");
     const gateStatusEl = document.getElementById("gate-status");
     const metaStatusEl = document.getElementById("meta-status");
+    const projectStatusEl = document.getElementById("project-status");
     const listEl = document.getElementById("accounts");
+    const projectsEl = document.getElementById("projects");
     const tokenInput = document.getElementById("token");
     const currentTokenInput = document.getElementById("current-token");
     const apiTestModelInput = document.getElementById("api-test-model");
@@ -1233,14 +1378,16 @@ function renderAdminPage(): string {
     const searchInput = document.getElementById("account-search");
     const statusFilterInput = document.getElementById("status-filter");
     const sortModeInput = document.getElementById("sort-mode");
-    const proxyEndpointEl = document.getElementById("proxy-endpoint");
+    const projectEndpointEl = document.getElementById("project-endpoint");
     const selectedIds = new Set();
     let currentAccounts = [];
+    let currentProjects = [];
+    let selectedProjectId = "";
     let visibleAccountIds = [];
-    tokenInput.value = localStorage.getItem("rt-router-token") || "";
+    tokenInput.value = localStorage.getItem("hyhub-admin-token") || localStorage.getItem("rt-router-token") || "";
     currentTokenInput.value = tokenInput.value;
     apiTestModelInput.value = localStorage.getItem("rt-router-api-test-model") || "gpt-4.1-mini";
-    proxyEndpointEl.textContent = window.location.origin + "/v1";
+    projectEndpointEl.textContent = window.location.origin + "/v1";
     function setStatus(target, message, isError = false) {
       target.textContent = message || "";
       target.style.color = isError ? "var(--danger)" : "var(--muted)";
@@ -1289,6 +1436,43 @@ function renderAdminPage(): string {
       if (state === "attention") return '<span class="tag bad">需处理</span>';
       return '<span class="tag ok">可参与轮询</span>';
     }
+    function formatDuration(ms) {
+      const safeMs = Math.max(0, Number(ms || 0));
+      const seconds = Math.ceil(safeMs / 1000);
+      if (seconds < 60) return seconds + " 秒";
+      const minutes = Math.ceil(seconds / 60);
+      if (minutes < 60) return minutes + " 分钟";
+      const hours = Math.floor(minutes / 60);
+      const restMinutes = minutes % 60;
+      return hours + " 小时" + (restMinutes ? " " + restMinutes + " 分钟" : "");
+    }
+    function recoveryText(account) {
+      const unhealthyUntil = Number(account.unhealthyUntil || 0);
+      if (unhealthyUntil > Date.now()) return formatDuration(unhealthyUntil - Date.now()) + " 后恢复轮询";
+      if (account.health?.lastOk === false) return "重新检测通过后恢复";
+      return "可立即参与轮询";
+    }
+    function lastProblem(account) {
+      const error = account.health?.lastError || account.stats?.lastError;
+      if (error) return String(error).slice(0, 160);
+      if (account.health?.lastStatus) return "最近检测返回 HTTP " + account.health.lastStatus;
+      if (account.stats?.lastStatus) return "最近真实请求返回 HTTP " + account.stats.lastStatus;
+      return "暂无错误详情";
+    }
+    function attentionReason(account) {
+      const reasons = [];
+      if ((account.unhealthyUntil || 0) > Date.now()) reasons.push("冷却中");
+      if (account.health?.lastOk === false) reasons.push("最近检测失败");
+      return reasons.length ? reasons.join(" / ") : "需处理";
+    }
+    function quickActions(account) {
+      const id = escapeHtml(account.id);
+      return '<div class="inline-actions">' +
+        '<button class="secondary" onclick="testAccount(\\'' + id + '\\')">可用检测</button>' +
+        '<button class="secondary" onclick="toggleAccount(\\'' + id + '\\', ' + (!account.enabled) + ')">' + (account.enabled ? "停用" : "启用") + '</button>' +
+        '<button class="secondary" onclick="copyAccountUrl(\\'' + id + '\\')">复制地址</button>' +
+      '</div>';
+    }
     function getToken() {
       return tokenInput.value.trim();
     }
@@ -1336,7 +1520,7 @@ function renderAdminPage(): string {
     }
     async function verify() {
       try {
-        localStorage.setItem("rt-router-token", getToken());
+        localStorage.setItem("hyhub-admin-token", getToken());
         setStatus(gateStatusEl, "验证中...");
         const data = await api("/admin/verify");
         setSummary(data.summary || {});
@@ -1344,6 +1528,7 @@ function renderAdminPage(): string {
         setStatus(gateStatusEl, "");
         setStatus(metaStatusEl, "验证通过。需要确认可用性时可手动点击全部检测。");
         await loadAccounts();
+        await loadProjects();
         await loadRouting();
         await loadModels();
       } catch (error) {
@@ -1363,8 +1548,68 @@ function renderAdminPage(): string {
       selectAll.checked = visibleAccountIds.length > 0 && visibleAccountIds.every((id) => selectedIds.has(id));
       document.getElementById("selected-count").textContent = "已选 " + selectedIds.size + " 个";
     }
+    function syncProjectAccountSelection(project) {
+      selectedProjectId = project?.id || "";
+      selectedIds.clear();
+      (project?.accountIds || []).forEach((id) => selectedIds.add(id));
+      document.getElementById("project-id").value = project?.id || "";
+      document.getElementById("project-name").value = project?.name || "";
+      document.getElementById("project-enabled").checked = project?.enabled !== false;
+      syncSelectAll();
+    }
+    function renderProjects(projects) {
+      currentProjects = projects || [];
+      if (!currentProjects.length) {
+        projectsEl.innerHTML = '<span class="muted">还没有项目。先创建一个项目，再选择上游账号并创建 API Key。</span>';
+        syncProjectAccountSelection(null);
+        return;
+      }
+      if (!selectedProjectId || !currentProjects.some((project) => project.id === selectedProjectId)) {
+        syncProjectAccountSelection(currentProjects[0]);
+      }
+      projectsEl.innerHTML = currentProjects.map((project) => {
+        const selected = project.id === selectedProjectId;
+        const keys = (project.apiKeys || []).map((key) => (
+          '<span class="tag mono" title="' + escapeHtml(key) + '">' + escapeHtml(key.slice(0, 10)) + '...' +
+          '<button class="secondary" style="margin-left:8px;padding:4px 8px" onclick="copyProjectKey(' + jsString(project.id) + ', ' + jsString(key) + ')">复制</button>' +
+          '<button class="danger" style="margin-left:4px;padding:4px 8px" onclick="deleteProjectKey(' + jsString(project.id) + ', ' + jsString(key) + ')">删</button></span>'
+        )).join(" ");
+        return '<div class="rank-row" style="' + (selected ? 'border-color:rgba(43,212,168,.42);' : '') + '">' +
+          '<div><div class="row" style="gap:8px"><b>' + escapeHtml(project.name) + '</b><span class="muted mono">' + escapeHtml(project.id) + '</span><span class="tag ' + (project.enabled ? 'ok' : 'off') + '">' + (project.enabled ? '启用' : '停用') + '</span></div>' +
+          '<div class="muted" style="margin-top:6px">绑定 ' + (project.accountIds?.length || 0) + ' 个上游账号，API Key ' + (project.keyCount || 0) + ' 个</div>' +
+          '<div class="meta" style="margin-top:8px">' + (keys || '<span class="muted">暂无 API Key</span>') + '</div></div>' +
+          '<div class="inline-actions"><button class="secondary" onclick="selectProject(' + jsString(project.id) + ')">选择</button><button class="secondary" onclick="toggleProject(' + jsString(project.id) + ', ' + (!project.enabled) + ')">' + (project.enabled ? '停用' : '启用') + '</button><button class="danger" onclick="deleteProject(' + jsString(project.id) + ')">删除</button></div>' +
+        '</div>';
+      }).join("");
+    }
+    function renderAttentionQueue(accounts) {
+      const queueEl = document.getElementById("attention-queue");
+      const items = accounts
+        .filter((account) => accountState(account) === "attention")
+        .sort((a, b) => {
+          const aCooling = (a.unhealthyUntil || 0) > Date.now() ? 0 : 1;
+          const bCooling = (b.unhealthyUntil || 0) > Date.now() ? 0 : 1;
+          if (aCooling !== bCooling) return aCooling - bCooling;
+          return (a.unhealthyUntil || Number.MAX_SAFE_INTEGER) - (b.unhealthyUntil || Number.MAX_SAFE_INTEGER);
+        });
+      queueEl.classList.toggle("clean", items.length === 0);
+      if (!items.length) {
+        queueEl.innerHTML = '<div class="attention-head"><div><h3>待处理账号</h3><div class="muted">当前没有冷却中或最近检测失败的启用账号。</div></div><span class="tag ok">队列清空</span></div>';
+        return;
+      }
+      queueEl.innerHTML = '<div class="attention-head"><div><h3>待处理账号</h3><div class="muted">按冷却恢复时间和检测失败优先排列，可直接处理，不用回表里翻。</div></div><span class="tag bad">' + items.length + ' 个需处理</span></div>' +
+        '<div class="attention-list">' + items.map((account, index) => {
+          return '<div class="attention-row" style="animation-delay:' + Math.min(220, index * 28) + 'ms">' +
+            '<div class="attention-title"><b>' + escapeHtml(account.label) + '</b><span class="muted mono">' + escapeHtml(account.id) + '</span><span class="muted mono node-url" title="' + escapeHtml(account.baseUrl) + '">' + escapeHtml(account.baseUrl) + '</span></div>' +
+            '<div><div class="meta" style="margin-top:0">' + stateTag(account) + '<span class="tag off">' + escapeHtml(attentionReason(account)) + '</span>' + (account.health?.lastStatus ? '<span class="tag">检测状态 ' + account.health.lastStatus + '</span>' : '') + '</div><div class="muted attention-error" title="' + escapeHtml(lastProblem(account)) + '" style="margin-top:8px;color:var(--danger)">' + escapeHtml(lastProblem(account)) + '</div></div>' +
+            '<div><div class="muted">恢复预估</div><div class="mono attention-recovery">' + escapeHtml(recoveryText(account)) + '</div></div>' +
+            quickActions(account) +
+          '</div>';
+        }).join("") + '</div>';
+    }
     function renderAccounts(accounts) {
       currentAccounts = accounts;
+      renderAttentionQueue(accounts);
       const query = (searchInput.value || "").trim().toLowerCase();
       const filter = statusFilterInput.value;
       const sortMode = sortModeInput.value;
@@ -1423,13 +1668,14 @@ function renderAdminPage(): string {
           '<td><div class="inline-actions"><button class="secondary" onclick="editAccount(\\'' + escapeHtml(account.id) + '\\')">编辑</button><button class="secondary" onclick="copyAccountUrl(\\'' + escapeHtml(account.id) + '\\')">复制地址</button><button class="secondary" onclick="testAccount(\\'' + escapeHtml(account.id) + '\\')">可用检测</button><button class="secondary" onclick="toggleAccount(\\'' + escapeHtml(account.id) + '\\', ' + (!account.enabled) + ')">' + (account.enabled ? "停用" : "启用") + '</button><button class="danger" onclick="removeAccount(\\'' + escapeHtml(account.id) + '\\')">删除</button></div></td>' +
           '</tr>';
       }).join("") + '</tbody></table></div>';
-      document.querySelectorAll("[data-account-check]").forEach((input) => {
+    document.querySelectorAll("[data-account-check]").forEach((input) => {
         input.addEventListener("change", (event) => {
           const id = event.target.getAttribute("data-account-check");
           if (!id) return;
           if (event.target.checked) selectedIds.add(id);
           else selectedIds.delete(id);
           syncSelectAll();
+          if (selectedProjectId) setStatus(projectStatusEl, "项目账号组有未保存改动，点击保存项目后生效。");
         });
       });
       syncSelectAll();
@@ -1451,6 +1697,103 @@ function renderAdminPage(): string {
         setBusy("reload", false);
       }
     }
+    async function loadProjects() {
+      try {
+        const data = await api("/admin/projects");
+        renderProjects(data.projects || []);
+      } catch (error) {
+        setStatus(projectStatusEl, error.message, true);
+      }
+    }
+    async function saveProject() {
+      try {
+        setBusy("save-project", true);
+        const id = document.getElementById("project-id").value.trim();
+        const payload = {
+          id: id || undefined,
+          name: document.getElementById("project-name").value.trim() || id || undefined,
+          enabled: document.getElementById("project-enabled").checked,
+          accountIds: [...selectedIds],
+        };
+        const existing = currentProjects.some((project) => project.id === id);
+        const data = await api(existing ? "/admin/projects/" + encodeURIComponent(id) : "/admin/projects", {
+          method: existing ? "PATCH" : "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        syncProjectAccountSelection(data.project);
+        await loadProjects();
+        setStatus(projectStatusEl, "项目已保存，当前勾选账号就是这个项目的轮询组。");
+      } catch (error) {
+        setStatus(projectStatusEl, error.message, true);
+      } finally {
+        setBusy("save-project", false);
+      }
+    }
+    async function generateProjectKey() {
+      try {
+        if (!selectedProjectId) throw new Error("请先选择或保存一个项目");
+        setBusy("generate-project-key", true);
+        const data = await api("/admin/projects/" + encodeURIComponent(selectedProjectId) + "/keys", { method: "POST" });
+        await navigator.clipboard.writeText(data.key);
+        await loadProjects();
+        setStatus(projectStatusEl, "API Key 已创建并复制。客户端用它作为 Bearer Token。");
+      } catch (error) {
+        setStatus(projectStatusEl, error.message, true);
+      } finally {
+        setBusy("generate-project-key", false);
+      }
+    }
+    window.selectProject = function(id) {
+      const project = currentProjects.find((item) => item.id === id);
+      if (!project) return;
+      syncProjectAccountSelection(project);
+      renderProjects(currentProjects);
+      renderAccounts(currentAccounts);
+      setStatus(projectStatusEl, "已选择项目：" + project.name);
+    };
+    window.toggleProject = async function(id, enabled) {
+      try {
+        await api("/admin/projects/" + encodeURIComponent(id), {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ enabled }),
+        });
+        await loadProjects();
+        setStatus(projectStatusEl, enabled ? "项目已启用。" : "项目已停用。");
+      } catch (error) {
+        setStatus(projectStatusEl, error.message, true);
+      }
+    };
+    window.deleteProject = async function(id) {
+      if (!confirm("确认删除这个项目？它的 API Key 会一起失效。")) return;
+      try {
+        await api("/admin/projects/" + encodeURIComponent(id), { method: "DELETE" });
+        if (selectedProjectId === id) selectedProjectId = "";
+        await loadProjects();
+        setStatus(projectStatusEl, "项目已删除。");
+      } catch (error) {
+        setStatus(projectStatusEl, error.message, true);
+      }
+    };
+    window.copyProjectKey = async function(id, key) {
+      try {
+        await navigator.clipboard.writeText(key);
+        setStatus(projectStatusEl, "API Key 已复制。");
+      } catch {
+        setStatus(projectStatusEl, "复制失败，请手动复制：" + key, true);
+      }
+    };
+    window.deleteProjectKey = async function(id, key) {
+      if (!confirm("确认删除这个 API Key？")) return;
+      try {
+        await api("/admin/projects/" + encodeURIComponent(id) + "/keys/" + encodeURIComponent(key), { method: "DELETE" });
+        await loadProjects();
+        setStatus(projectStatusEl, "API Key 已删除。");
+      } catch (error) {
+        setStatus(projectStatusEl, error.message, true);
+      }
+    };
     async function loadRouting() {
       try {
         const data = await api("/admin/routing");
@@ -1560,9 +1903,9 @@ function renderAdminPage(): string {
       const endpoint = window.location.origin + "/v1";
       try {
         await navigator.clipboard.writeText(endpoint);
-        setStatus(metaStatusEl, "代理端点已复制：" + endpoint);
+        setStatus(projectStatusEl, "Base URL 已复制：" + endpoint);
       } catch {
-        setStatus(metaStatusEl, "复制失败，请手动复制：" + endpoint, true);
+        setStatus(projectStatusEl, "复制失败，请手动复制：" + endpoint, true);
       }
     }
     async function copyAccountUrl(id) {
@@ -1699,7 +2042,7 @@ function renderAdminPage(): string {
     async function exportAccounts() {
       try {
         const data = await api("/admin/accounts/export");
-        downloadJson("rt-account-router-accounts.json", data);
+        downloadJson("hyhub-upstream-accounts.json", data);
         setStatus(statusEl, "账号已导出。");
       } catch (error) {
         setStatus(statusEl, error.message, true);
@@ -1747,6 +2090,15 @@ function renderAdminPage(): string {
     tokenInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") verify();
     });
+    document.getElementById("save-project").addEventListener("click", saveProject);
+    document.getElementById("clear-project").addEventListener("click", () => {
+      selectedProjectId = "";
+      syncProjectAccountSelection(null);
+      renderProjects(currentProjects);
+      renderAccounts(currentAccounts);
+      setStatus(projectStatusEl, "已清空项目表单。");
+    });
+    document.getElementById("generate-project-key").addEventListener("click", generateProjectKey);
     document.getElementById("add-account").addEventListener("click", addAccount);
     document.getElementById("save-routing").addEventListener("click", saveRouting);
     document.getElementById("discover-models").addEventListener("click", discoverModels);
@@ -1776,13 +2128,16 @@ function renderAdminPage(): string {
       renderAccounts(currentAccounts);
     });
     document.getElementById("logout").addEventListener("click", () => {
+      localStorage.removeItem("hyhub-admin-token");
       localStorage.removeItem("rt-router-token");
       tokenInput.value = "";
       currentTokenInput.value = "";
       selectedIds.clear();
+      selectedProjectId = "";
       appEl.classList.add("hidden");
       gateEl.classList.remove("hidden");
       renderAccounts([]);
+      renderProjects([]);
       setSummary({ total: 0, enabled: 0, disabled: 0, cooling: 0, calls: 0, successes: 0, errors: 0 });
       setStatus(gateStatusEl, "已退出。");
     });
@@ -1790,7 +2145,7 @@ function renderAdminPage(): string {
     else {
       renderAccounts([]);
       setSummary({ total: 0, enabled: 0, disabled: 0, cooling: 0, calls: 0, successes: 0, errors: 0 });
-      setStatus(gateStatusEl, "先输入服务访问密码。");
+      setStatus(gateStatusEl, "先输入管理员密钥。");
     }
   </script>
 </body>
@@ -1828,6 +2183,7 @@ export class RouterState extends DurableObject<Env> {
   private routingCache: RoutingSettings | null = null;
   private modelsCache: ModelSettings | null = null;
   private modelHourlyCache: ModelHourlyStats | null = null;
+  private projectsCache: ProjectRecord[] | null = null;
 
   private async getAccounts(): Promise<AccountRecord[]> {
     if (this.accountsCache) return this.accountsCache;
@@ -1839,6 +2195,24 @@ export class RouterState extends DurableObject<Env> {
   private async saveAccounts(accounts: AccountRecord[]): Promise<void> {
     this.accountsCache = accounts;
     await this.ctx.storage.put(ACCOUNTS_KEY, accounts);
+  }
+
+  private async getProjects(): Promise<ProjectRecord[]> {
+    if (this.projectsCache) return this.projectsCache;
+    const saved = await this.ctx.storage.get<ProjectRecord[]>(PROJECTS_KEY);
+    this.projectsCache = Array.isArray(saved) ? saved : [];
+    return this.projectsCache;
+  }
+
+  private async saveProjects(projects: ProjectRecord[]): Promise<void> {
+    this.projectsCache = projects;
+    await this.ctx.storage.put(PROJECTS_KEY, projects);
+  }
+
+  private async findProjectByApiKey(apiKey: string): Promise<ProjectRecord | null> {
+    if (!apiKey.trim()) return null;
+    const projects = await this.getProjects();
+    return projects.find((project) => project.enabled && project.apiKeys.includes(apiKey)) ?? null;
   }
 
   private async getStatsMap(): Promise<Record<string, AccountStat>> {
@@ -2123,10 +2497,14 @@ export class RouterState extends DurableObject<Env> {
     }
   }
 
-  private async pickAccount(excluded: Set<string> = new Set()): Promise<AccountRecord | null> {
+  private async pickAccount(excluded: Set<string> = new Set(), allowedAccountIds?: Set<string>): Promise<AccountRecord | null> {
     const accounts = await this.getAccounts();
     const now = Date.now();
-    const enabled = accounts.filter((item) => item.enabled && !excluded.has(item.id));
+    const enabled = accounts.filter((item) => (
+      item.enabled
+      && !excluded.has(item.id)
+      && (!allowedAccountIds || allowedAccountIds.has(item.id))
+    ));
     const healthy = enabled.filter((item) => (item.unhealthyUntil ?? 0) <= now);
     const pool = healthy.length > 0 ? healthy : enabled;
     if (pool.length === 0) return null;
@@ -2152,8 +2530,12 @@ export class RouterState extends DurableObject<Env> {
   }
 
   private async proxyRequest(request: Request): Promise<Response> {
-    const authError = ensureAuthorized(request, this.env.AUTH_TOKEN);
-    if (authError) return authError;
+    const project = await this.findProjectByApiKey(getBearer(request));
+    if (!project) return json({ error: "Invalid project API key" }, { status: 401 });
+    const projectAccountIds = new Set(project.accountIds);
+    if (projectAccountIds.size === 0) {
+      return json({ error: "Project has no accounts" }, { status: 503 });
+    }
     const requestUrl = new URL(request.url);
     if (!requestUrl.pathname.startsWith("/v1/")) {
       return json({ error: "Only /v1/* routes are supported" }, { status: 404 });
@@ -2162,7 +2544,7 @@ export class RouterState extends DurableObject<Env> {
     if (request.method === "GET" && requestUrl.pathname === "/v1/models" && modelSettings.models.length > 0) {
       return json({
         object: "list",
-        data: modelSettings.models.map((id) => ({ id, object: "model", owned_by: "rt-cf" })),
+        data: modelSettings.models.map((id) => ({ id, object: "model", owned_by: "hyhub" })),
       });
     }
     const requestBody = request.method === "GET" || request.method === "HEAD"
@@ -2190,14 +2572,14 @@ export class RouterState extends DurableObject<Env> {
     }
     const excluded = new Set<string>();
     const routing = await this.getRoutingSettings();
-    const enabledCount = (await this.getAccounts()).filter((item) => item.enabled).length;
+    const enabledCount = (await this.getAccounts()).filter((item) => item.enabled && projectAccountIds.has(item.id)).length;
     const maxAttempts = Math.max(1, Math.min(routing.maxRetryAccounts, enabledCount || routing.maxRetryAccounts));
     let attempts = 0;
     while (true) {
       if (attempts >= maxAttempts) {
         return json({ error: "Retry limit reached", attempts, maxAttempts }, { status: 502 });
       }
-      const account = await this.pickAccount(excluded);
+      const account = await this.pickAccount(excluded, projectAccountIds);
       if (!account) return json({ error: "No available accounts" }, { status: 503 });
       attempts += 1;
       const startedAt = Date.now();
@@ -2269,7 +2651,7 @@ export class RouterState extends DurableObject<Env> {
     }
 
     if (pathname === "/admin/accounts" && request.method === "POST") {
-      const payload = sanitizeAccountInput(await readJsonBody<AccountInput>(request), this.env.AUTH_TOKEN);
+      const payload = sanitizeAccountInput(await readJsonBody<AccountInput>(request));
       const accounts = await this.getAccounts();
       const next = accounts.filter((item) => item.id !== payload.id);
       next.push(payload);
@@ -2309,7 +2691,7 @@ export class RouterState extends DurableObject<Env> {
       let imported = 0;
 
       for (const item of incoming) {
-        const normalized = sanitizeAccountInput(item, this.env.AUTH_TOKEN);
+        const normalized = sanitizeAccountInput(item);
         const index = next.findIndex((existing) => existing.id === normalized.id);
         if (index >= 0) next[index] = normalized;
         else next.push(normalized);
@@ -2332,6 +2714,73 @@ export class RouterState extends DurableObject<Env> {
       }
       await this.saveAccounts(accounts);
       return json({ ok: true, changed });
+    }
+
+    if (pathname === "/admin/projects" && request.method === "GET") {
+      const projects = await this.getProjects();
+      return json({ projects: projects.map(toPublicProject) });
+    }
+
+    if (pathname === "/admin/projects" && request.method === "POST") {
+      const payload = await readJsonBody<ProjectInput>(request);
+      const project = sanitizeProjectInput(payload);
+      const projects = await this.getProjects();
+      const next = projects.filter((item) => item.id !== project.id);
+      next.push(project);
+      await this.saveProjects(next);
+      return json({ ok: true, project: toPublicProject(project) }, { status: 201 });
+    }
+
+    const projectKeyMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/keys\/([^/]+)$/);
+    const projectGenerateKeyMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/keys$/);
+    const projectMatch = pathname.match(/^\/admin\/projects\/([^/]+)$/);
+    if (projectGenerateKeyMatch && request.method === "POST") {
+      const projectId = decodeURIComponent(projectGenerateKeyMatch[1]);
+      const projects = await this.getProjects();
+      const project = projects.find((item) => item.id === projectId);
+      if (!project) return json({ error: "Project not found" }, { status: 404 });
+      const key = generateProjectApiKey();
+      project.apiKeys.push(key);
+      project.updatedAt = Date.now();
+      await this.saveProjects(projects);
+      return json({ ok: true, key, project: toPublicProject(project) }, { status: 201 });
+    }
+
+    if (projectKeyMatch && request.method === "DELETE") {
+      const projectId = decodeURIComponent(projectKeyMatch[1]);
+      const key = decodeURIComponent(projectKeyMatch[2]);
+      const projects = await this.getProjects();
+      const project = projects.find((item) => item.id === projectId);
+      if (!project) return json({ error: "Project not found" }, { status: 404 });
+      project.apiKeys = project.apiKeys.filter((item) => item !== key);
+      project.updatedAt = Date.now();
+      await this.saveProjects(projects);
+      return json({ ok: true, project: toPublicProject(project) });
+    }
+
+    if (projectMatch) {
+      const projectId = decodeURIComponent(projectMatch[1]);
+      const projects = await this.getProjects();
+      const project = projects.find((item) => item.id === projectId);
+      if (!project) return json({ error: "Project not found" }, { status: 404 });
+
+      if (request.method === "GET") {
+        return json({ project: toPublicProject(project) });
+      }
+
+      if (request.method === "PATCH") {
+        const payload = await readJsonBody<ProjectInput>(request);
+        const next = sanitizeProjectInput({ ...payload, id: project.id }, project);
+        const index = projects.findIndex((item) => item.id === project.id);
+        projects[index] = next;
+        await this.saveProjects(projects);
+        return json({ ok: true, project: toPublicProject(next) });
+      }
+
+      if (request.method === "DELETE") {
+        await this.saveProjects(projects.filter((item) => item.id !== project.id));
+        return json({ ok: true });
+      }
     }
 
     if (pathname === "/admin/stats/reset" && request.method === "POST") {
