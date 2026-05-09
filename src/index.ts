@@ -2216,11 +2216,14 @@ function renderAdminPageV2(): string {
     }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; overflow-x: hidden; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    body.menu-lock { overflow: hidden; }
     .hidden { display: none !important; }
     .gate { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
     .gate-card, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
     .gate-card { width: min(440px, 100%); padding: 28px; display: grid; gap: 14px; }
     .shell { min-height: 100vh; display: grid; grid-template-columns: 236px minmax(0, 1fr); width: 100%; overflow-x: clip; }
+    .mobile-bar { display: none; }
+    .scrim { display: none; }
     aside { position: sticky; top: 0; height: 100vh; min-width: 0; overflow-y: auto; border-right: 1px solid var(--line); background: var(--panel); padding: 20px 14px; display: flex; flex-direction: column; gap: 18px; }
     .brand h1 { margin: 0 0 6px; font-size: 25px; letter-spacing: 0; }
     .brand p, .muted { color: var(--muted); line-height: 1.55; }
@@ -2275,39 +2278,90 @@ function renderAdminPageV2(): string {
     @media (max-width: 1180px) { .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
     @media (max-width: 1040px) {
       .shell, .layout-projects { grid-template-columns: minmax(0, 1fr); }
-      aside {
-        position: sticky;
-        top: 0;
-        z-index: 3;
-        height: auto;
-        max-height: none;
-        border-right: 0;
-        border-bottom: 1px solid var(--line);
-        display: grid;
-        grid-template-columns: minmax(170px, 1fr) minmax(0, 1.8fr) auto auto;
-        align-items: center;
-        gap: 10px;
-        padding: 12px 14px;
-      }
-      .brand h1 { font-size: 20px; margin-bottom: 2px; }
-      .brand p { font-size: 12px; margin: 0; }
-      nav { min-width: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-      .nav-btn { justify-content: center; white-space: nowrap; padding-left: 10px; padding-right: 10px; }
       .grid.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 760px) {
-      aside { grid-template-columns: 1fr; align-items: stretch; }
-      nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .shell { display: block; min-height: 100vh; padding-top: 52px; }
+      .mobile-bar {
+        position: fixed;
+        inset: 0 0 auto 0;
+        z-index: 6;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        height: 52px;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--line);
+        background: color-mix(in srgb, var(--panel) 94%, transparent);
+        backdrop-filter: blur(14px);
+      }
+      .mobile-title { min-width: 0; display: flex; align-items: center; gap: 9px; font-weight: 800; }
+      .mobile-title span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .mobile-mark {
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        flex: 0 0 auto;
+        border-radius: 8px;
+        color: #fff;
+        background: var(--accent);
+      }
+      #menu-toggle {
+        width: 38px;
+        height: 36px;
+        padding: 0;
+        display: grid;
+        place-items: center;
+        background: var(--panel-soft);
+        color: var(--text);
+        border: 1px solid var(--line);
+      }
+      #menu-toggle::before { content: "☰"; font-size: 18px; line-height: 1; }
+      .scrim {
+        position: fixed;
+        inset: 0;
+        z-index: 7;
+        display: block;
+        background: rgba(15, 23, 42, 0.42);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 180ms ease;
+      }
+      aside {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 8;
+        width: min(82vw, 300px);
+        height: 100vh;
+        transform: translateX(-102%);
+        transition: transform 220ms ease;
+        border-right: 1px solid var(--line);
+        border-bottom: 0;
+        box-shadow: 18px 0 42px rgba(15, 23, 42, 0.16);
+      }
+      .shell.menu-open aside { transform: translateX(0); }
+      .shell.menu-open .scrim { opacity: 1; pointer-events: auto; }
+      nav { grid-template-columns: 1fr; }
+      .nav-btn { justify-content: flex-start; white-space: normal; }
+      aside .ghost, aside .danger { width: 100%; }
       header { display: grid; }
       .stats, .grid.two, .grid.three { grid-template-columns: 1fr; }
       .bar { grid-template-columns: 1fr; }
     }
     @media (max-width: 420px) {
       main { padding: 12px; }
-      aside { padding: 10px 12px; }
-      nav { grid-template-columns: 1fr; }
+      .mobile-bar { height: 48px; padding: 6px 10px; }
+      .shell { padding-top: 48px; }
+      aside { width: min(86vw, 292px); padding: 16px 12px; }
       .actions { display: grid; grid-template-columns: 1fr; }
       .actions button { width: 100%; }
+    }
+    @supports not (background: color-mix(in srgb, white, transparent)) {
+      @media (max-width: 760px) { .mobile-bar { background: var(--panel); } }
     }
   </style>
 </head>
@@ -2325,6 +2379,11 @@ function renderAdminPageV2(): string {
   </section>
 
   <section id="app" class="shell hidden">
+    <div class="mobile-bar">
+      <div class="mobile-title"><span class="mobile-mark">H</span><span id="mobile-page-title">仪表盘</span></div>
+      <button id="menu-toggle" aria-label="打开菜单" aria-expanded="false"></button>
+    </div>
+    <div id="menu-scrim" class="scrim"></div>
     <aside>
       <div class="brand">
         <h1>HYHub</h1>
@@ -2471,6 +2530,9 @@ function renderAdminPageV2(): string {
       gateStatus: document.getElementById("gate-status"),
       pageTitle: document.getElementById("page-title"),
       pageDesc: document.getElementById("page-desc"),
+      mobilePageTitle: document.getElementById("mobile-page-title"),
+      menuToggle: document.getElementById("menu-toggle"),
+      menuScrim: document.getElementById("menu-scrim"),
       baseUrl: document.getElementById("base-url"),
       projectList: document.getElementById("project-list"),
       dashboardProjects: document.getElementById("dashboard-projects"),
@@ -2525,8 +2587,20 @@ function renderAdminPageV2(): string {
       document.querySelectorAll(".nav-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.page === page));
       document.querySelectorAll(".page").forEach((section) => section.classList.toggle("active", section.id === "page-" + page));
       els.pageTitle.textContent = pageMeta[page][0];
+      els.mobilePageTitle.textContent = pageMeta[page][0];
       els.pageDesc.textContent = pageMeta[page][1];
       location.hash = page;
+      closeMenu();
+    }
+    function openMenu() {
+      els.app.classList.add("menu-open");
+      document.body.classList.add("menu-lock");
+      els.menuToggle.setAttribute("aria-expanded", "true");
+    }
+    function closeMenu() {
+      els.app.classList.remove("menu-open");
+      document.body.classList.remove("menu-lock");
+      els.menuToggle.setAttribute("aria-expanded", "false");
     }
     function renderDashboard() {
       document.getElementById("dash-projects").textContent = projects.length;
@@ -2787,6 +2861,11 @@ function renderAdminPageV2(): string {
       status(els.opsStatus, "统计已清空。");
     }
     document.querySelectorAll(".nav-btn").forEach((btn) => btn.addEventListener("click", () => setPage(btn.dataset.page)));
+    els.menuToggle.addEventListener("click", () => {
+      if (els.app.classList.contains("menu-open")) closeMenu();
+      else openMenu();
+    });
+    els.menuScrim.addEventListener("click", closeMenu);
     document.getElementById("gate-submit").addEventListener("click", verifyLogin);
     els.token.addEventListener("keydown", (event) => { if (event.key === "Enter") verifyLogin(); });
     document.getElementById("reload").addEventListener("click", refreshAll);
