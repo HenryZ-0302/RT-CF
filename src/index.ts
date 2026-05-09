@@ -99,6 +99,8 @@ type ModelSettings = {
   models: string[];
 };
 
+type ProjectModelSettings = Record<string, ModelSettings>;
+
 type ModelHourlyBucket = {
   calls: number;
   successes: number;
@@ -150,6 +152,34 @@ function normalizeModelList(value: unknown): string[] {
     models.push(model);
   }
   return models.slice(0, 100);
+}
+
+function normalizeProjectModelMap(value: unknown): ProjectModelSettings {
+  const saved = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  if (Array.isArray((saved as Partial<ModelSettings>).models)) {
+    return { [DEFAULT_PROJECT_ID]: { models: normalizeModelList((saved as Partial<ModelSettings>).models) } };
+  }
+  const next: ProjectModelSettings = {};
+  for (const [projectId, settings] of Object.entries(saved)) {
+    if (!projectId.trim()) continue;
+    next[projectId] = { models: normalizeModelList((settings as Partial<ModelSettings> | undefined)?.models) };
+  }
+  return next;
+}
+
+function prefixProjectModel(project: ProjectRecord, model: string): string {
+  return `${project.id}/${model}`;
+}
+
+function parseProjectModel(project: ProjectRecord, model: string): { upstreamModel: string; publicModel: string; prefixed: boolean } {
+  const raw = model.trim();
+  const prefixes = [`${project.id}/`, `${project.name}/`];
+  const matched = prefixes.find((prefix) => raw.startsWith(prefix));
+  if (!matched) {
+    return { upstreamModel: raw, publicModel: raw ? prefixProjectModel(project, raw) : "", prefixed: false };
+  }
+  const upstreamModel = raw.slice(matched.length).trim();
+  return { upstreamModel, publicModel: upstreamModel ? prefixProjectModel(project, upstreamModel) : "", prefixed: true };
 }
 
 function createEmptyModelBucket(): ModelHourlyBucket {
@@ -335,7 +365,10 @@ function summarizeAccounts(
   const now = Date.now();
   const enabled = accounts.filter((account) => account.enabled).length;
   const cooling = accounts.filter((account) => (account.unhealthyUntil ?? 0) > now).length;
-  const stats = Object.values(statsMap);
+  const accountIds = new Set(accounts.map((account) => account.id));
+  const stats = Object.entries(statsMap)
+    .filter(([accountId]) => accountIds.has(accountId))
+    .map(([, stat]) => stat);
   const successes = stats.reduce((sum, item) => sum + item.successes, 0);
   const calls = stats.reduce((sum, item) => sum + item.calls, 0);
   const health = accounts.map((account) => healthMap[account.id] ?? createEmptyHealth());
@@ -2495,6 +2528,7 @@ function renderAdminPageV2(): string {
           </section>
           <section class="panel">
             <h3>开放模型</h3>
+            <p class="muted">模型按当前项目管理，对外显示为 项目ID/模型名，例如 example/gpt-5.5；转发上游时会自动去掉项目前缀。</p>
             <textarea id="open-models" placeholder="一行一个模型"></textarea>
             <div class="grid two" style="margin-top:10px">
               <input id="model-discovery-limit" type="number" min="1" max="50" step="1" value="8" placeholder="扫描账号数" />
@@ -2555,6 +2589,7 @@ function renderAdminPageV2(): string {
     let projects = [];
     let accounts = [];
     let summary = {};
+    let projectStats = [];
     let publicStatus = {};
     let selectedProjectId = localStorage.getItem("hyhub-selected-project") || "default-rt";
     let selectedAccountIds = new Set();
@@ -2609,9 +2644,15 @@ function renderAdminPageV2(): string {
       document.getElementById("dash-action").textContent = summary.actionRequired || 0;
       document.getElementById("dash-calls").textContent = fmt(summary.calls || 0);
       document.getElementById("dash-errors").textContent = fmt(summary.errors || 0);
-      els.dashboardProjects.innerHTML = projects.length ? projects
-        .slice().sort((a, b) => (b.accountCount || 0) - (a.accountCount || 0))
-        .map((project) => '<div class="list-item" onclick="selectProject(\\'' + escapeHtml(project.id) + '\\', true)"><div class="row"><b>' + escapeHtml(project.name) + '</b><span class="tag ' + (project.enabled ? 'ok' : 'warn') + '">' + (project.enabled ? '启用' : '停用') + '</span></div><div class="muted mono">' + escapeHtml(project.id) + '</div><div class="muted">账号 ' + (project.accountCount || 0) + ' / API Key ' + (project.keyCount || 0) + '</div></div>')
+      const dashboardItems = projectStats.length ? projectStats : projects.map((project) => ({ project, summary: {} }));
+      els.dashboardProjects.innerHTML = dashboardItems.length ? dashboardItems
+        .slice().sort((a, b) => (b.summary?.calls || 0) - (a.summary?.calls || 0) || (b.summary?.actionRequired || 0) - (a.summary?.actionRequired || 0))
+        .map((item) => {
+          const project = item.project || {};
+          const itemSummary = item.summary || {};
+          const rate = itemSummary.calls > 0 ? itemSummary.successRate + '%' : '暂无';
+          return '<div class="list-item" onclick="selectProject(\\'' + escapeHtml(project.id) + '\\', true)"><div class="row"><b>' + escapeHtml(project.name) + '</b><span class="tag ' + (project.enabled ? 'ok' : 'warn') + '">' + (project.enabled ? '启用' : '停用') + '</span></div><div class="muted mono">' + escapeHtml(project.id) + '</div><div class="muted">账号 ' + (project.accountCount || 0) + ' / 可用 ' + (itemSummary.available || 0) + ' / 待处理 ' + (itemSummary.actionRequired || 0) + '</div><div class="muted">调用 ' + fmt(itemSummary.calls || 0) + ' / 失败 ' + fmt(itemSummary.errors || 0) + ' / 成功率 ' + rate + '</div></div>';
+        })
         .join("") : '<div class="empty">暂无项目。</div>';
       const modelHealth = publicStatus.modelHealth || [];
       els.modelHealth.innerHTML = modelHealth.length ? modelHealth.map((item) => {
@@ -2661,6 +2702,7 @@ function renderAdminPageV2(): string {
       const verify = await api("/admin/verify");
       projects = verify.projects || [];
       summary = verify.summary || {};
+      projectStats = verify.projectStats || [];
       if (!projects.some((project) => project.id === selectedProjectId)) selectedProjectId = projects[0]?.id || "default-rt";
       await loadProjectAccounts();
       await Promise.all([loadRouting(), loadModels(), loadPublicStatus()]);
@@ -2682,8 +2724,11 @@ function renderAdminPageV2(): string {
       document.getElementById("disable-on-failure").checked = data.routing?.disableOnFailure === true;
     }
     async function loadModels() {
-      const data = await api("/admin/models");
+      if (!selectedProjectId) return;
+      const data = await api(projectPath("/models"));
       document.getElementById("open-models").value = (data.models || []).join("\\n");
+      const project = selectedProject();
+      document.getElementById("api-test-model").placeholder = project ? "账号检测模型，例如 " + project.id + "/gpt-5.5" : "账号检测模型";
     }
     async function verifyLogin() {
       try {
@@ -2704,6 +2749,7 @@ function renderAdminPageV2(): string {
       selectedProjectId = id;
       localStorage.setItem("hyhub-selected-project", id);
       await loadProjectAccounts();
+      await loadModels();
       renderProjects();
       renderAccounts();
       if (goProjects) setPage("projects");
@@ -2811,15 +2857,15 @@ function renderAdminPageV2(): string {
     async function saveModels() {
       try {
         const models = document.getElementById("open-models").value.split(/[\\n,]+/).map((item) => item.trim()).filter(Boolean);
-        await api("/admin/models", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ models }) });
+        await api(projectPath("/models"), { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ models }) });
         status(els.modelStatus, "开放模型已保存。");
       } catch (error) { status(els.modelStatus, error.message, true); }
     }
     async function discoverModels() {
       try {
         const limit = Number(document.getElementById("model-discovery-limit").value || 8);
-        const data = await api("/admin/models/discover", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ limit }) });
-        document.getElementById("discovered-models").innerHTML = (data.recommendations || []).map((item) => '<div class="list-item" onclick="addModel(\\'' + escapeHtml(item.model) + '\\')"><b class="mono">' + escapeHtml(item.model) + '</b><span class="muted">' + (item.accounts?.length || 0) + ' 个账号返回</span></div>').join("") || '<div class="empty">没有发现模型。</div>';
+        const data = await api(projectPath("/models/discover"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ limit }) });
+        document.getElementById("discovered-models").innerHTML = (data.recommendations || []).map((item) => '<div class="list-item" onclick="addModel(\\'' + escapeHtml(item.model) + '\\')"><b class="mono">' + escapeHtml(item.publicModel || item.model) + '</b><span class="muted">' + (item.accounts?.length || 0) + ' 个账号返回</span></div>').join("") || '<div class="empty">没有发现模型。</div>';
         status(els.modelStatus, "扫描完成。点击候选模型可加入列表。");
       } catch (error) { status(els.modelStatus, error.message, true); }
     }
@@ -2878,7 +2924,7 @@ function renderAdminPageV2(): string {
     document.getElementById("test-project-accounts").addEventListener("click", async () => { const data = await api(projectPath("/accounts/test-all"), { method: "POST" }); status(els.accountStatus, "检测完成：" + (data.okCount || 0) + "/" + (data.total || 0) + " 可用。"); await refreshAll(); });
     document.getElementById("batch-enable").addEventListener("click", () => batchToggle(true));
     document.getElementById("batch-disable").addEventListener("click", () => batchToggle(false));
-    document.getElementById("settings-project").addEventListener("change", async (event) => { await window.selectProject(event.target.value); renderKeys(); });
+    document.getElementById("settings-project").addEventListener("change", async (event) => { await window.selectProject(event.target.value); renderKeys(); await loadModels(); });
     document.getElementById("create-key").addEventListener("click", createKey);
     document.getElementById("copy-base-url").addEventListener("click", async () => { await navigator.clipboard.writeText(window.location.origin + "/v1"); status(els.keyStatus, "Base URL 已复制。"); });
     document.getElementById("save-routing").addEventListener("click", saveRouting);
@@ -2924,7 +2970,7 @@ export class RouterState extends DurableObject<Env> {
   private statsCache: Record<string, AccountStat> | null = null;
   private healthCache: Record<string, AccountHealth> | null = null;
   private routingCache: RoutingSettings | null = null;
-  private modelsCache: ModelSettings | null = null;
+  private modelsCache: ProjectModelSettings | null = null;
   private modelHourlyCache: ModelHourlyStats | null = null;
   private projectsCache: ProjectRecord[] | null = null;
 
@@ -3032,20 +3078,26 @@ export class RouterState extends DurableObject<Env> {
     await this.ctx.storage.put(ROUTING_KEY, this.routingCache);
   }
 
-  private async getModelSettings(): Promise<ModelSettings> {
+  private async getAllModelSettings(): Promise<ProjectModelSettings> {
     if (this.modelsCache) return this.modelsCache;
-    const saved = await this.ctx.storage.get<Partial<ModelSettings>>(MODELS_KEY);
-    this.modelsCache = {
-      models: normalizeModelList(saved?.models),
-    };
+    const saved = await this.ctx.storage.get<unknown>(MODELS_KEY);
+    this.modelsCache = normalizeProjectModelMap(saved);
+    if (saved && typeof saved === "object" && Array.isArray((saved as Partial<ModelSettings>).models)) {
+      await this.ctx.storage.put(MODELS_KEY, this.modelsCache);
+    }
     return this.modelsCache;
   }
 
-  private async saveModelSettings(settings: ModelSettings): Promise<void> {
-    this.modelsCache = {
-      models: normalizeModelList(settings.models),
-    };
-    await this.ctx.storage.put(MODELS_KEY, this.modelsCache);
+  private async getProjectModelSettings(projectId: string): Promise<ModelSettings> {
+    const settings = await this.getAllModelSettings();
+    return settings[projectId] ?? { models: [] };
+  }
+
+  private async saveProjectModelSettings(projectId: string, settings: ModelSettings): Promise<void> {
+    const all = await this.getAllModelSettings();
+    all[projectId] = { models: normalizeModelList(settings.models) };
+    this.modelsCache = all;
+    await this.ctx.storage.put(MODELS_KEY, all);
   }
 
   private async getModelHourlyStats(): Promise<ModelHourlyStats> {
@@ -3325,34 +3377,45 @@ export class RouterState extends DurableObject<Env> {
     if (!requestUrl.pathname.startsWith("/v1/")) {
       return json({ error: "Only /v1/* routes are supported" }, { status: 404 });
     }
-    const modelSettings = await this.getModelSettings();
-    if (request.method === "GET" && requestUrl.pathname === "/v1/models" && modelSettings.models.length > 0) {
+    const modelSettings = await this.getProjectModelSettings(project.id);
+    if (request.method === "GET" && requestUrl.pathname === "/v1/models") {
       return json({
         object: "list",
-        data: modelSettings.models.map((id) => ({ id, object: "model", owned_by: "hyhub" })),
+        data: modelSettings.models.map((model) => ({ id: prefixProjectModel(project, model), object: "model", owned_by: project.id })),
       });
     }
-    const requestBody = request.method === "GET" || request.method === "HEAD"
+    let requestBody = request.method === "GET" || request.method === "HEAD"
       ? undefined
       : await request.arrayBuffer();
     let requestedModel: string | null = null;
+    let upstreamModel: string | null = null;
+    let requestBodyRewritten = false;
     const modelRequestPaths = new Set(["/v1/chat/completions", "/v1/responses", "/v1/embeddings"]);
     if (requestBody && modelRequestPaths.has(requestUrl.pathname)) {
-      let payload: { model?: string };
+      let payload: { model?: string; [key: string]: unknown };
       try {
-        payload = JSON.parse(new TextDecoder().decode(requestBody)) as { model?: string };
+        payload = JSON.parse(new TextDecoder().decode(requestBody)) as { model?: string; [key: string]: unknown };
       } catch {
         return json({ error: "Invalid JSON body" }, { status: 400 });
       }
-      requestedModel = typeof payload.model === "string" ? payload.model.trim() : "";
+      const clientModel = typeof payload.model === "string" ? payload.model.trim() : "";
+      const parsedModel = parseProjectModel(project, clientModel);
+      requestedModel = parsedModel.publicModel || null;
+      upstreamModel = parsedModel.upstreamModel || null;
       if (modelSettings.models.length > 0) {
-        if (!requestedModel || !modelSettings.models.includes(requestedModel)) {
+        if (!parsedModel.prefixed || !upstreamModel || !modelSettings.models.includes(upstreamModel)) {
           return json({
             error: "Model is not enabled",
-            model: requestedModel || null,
-            allowedModels: modelSettings.models,
+            model: clientModel || null,
+            allowedModels: modelSettings.models.map((model) => prefixProjectModel(project, model)),
           }, { status: 403 });
         }
+      }
+      if (upstreamModel && clientModel !== upstreamModel) {
+        payload.model = upstreamModel;
+        const encoded = new TextEncoder().encode(JSON.stringify(payload));
+        requestBody = encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength);
+        requestBodyRewritten = true;
       }
     }
     const excluded = new Set<string>();
@@ -3372,6 +3435,7 @@ export class RouterState extends DurableObject<Env> {
         const headers = new Headers(request.headers);
         headers.set("authorization", `Bearer ${account.apiKey}`);
         headers.delete("host");
+        if (requestBodyRewritten) headers.delete("content-length");
         if (account.extraHeaders) {
           for (const [key, value] of Object.entries(account.extraHeaders)) headers.set(key, value);
         }
@@ -3423,7 +3487,19 @@ export class RouterState extends DurableObject<Env> {
         this.getStatsMap(),
         this.getHealthMap(),
       ]);
-      return json({ ok: true, projects: projects.map((project) => toPublicProject(project, accounts.filter((account) => account.projectId === project.id).length)), summary: summarizeAccounts(accounts, statsMap, healthMap) });
+      const projectStats = projects.map((project) => {
+        const scoped = accounts.filter((account) => account.projectId === project.id);
+        return {
+          project: toPublicProject(project, scoped.length),
+          summary: summarizeAccounts(scoped, statsMap, healthMap),
+        };
+      });
+      return json({
+        ok: true,
+        projects: projectStats.map((item) => item.project),
+        summary: summarizeAccounts(accounts, statsMap, healthMap),
+        projectStats,
+      });
     }
 
     const legacyAccountsMatch = pathname.match(/^\/admin\/accounts(?:\/([^/]+))?(?:\/(test))?$/);
@@ -3642,19 +3718,48 @@ export class RouterState extends DurableObject<Env> {
       return json({ ok: true, routing: next });
     }
 
-    if (pathname === "/admin/models" && request.method === "GET") {
-      const settings = await this.getModelSettings();
-      return json({ models: settings.models });
+    const projectModelsMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/models$/);
+    const projectModelsDiscoverMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/models\/discover$/);
+    const modelProjectId = projectModelsMatch?.[1]
+      ? decodeURIComponent(projectModelsMatch[1])
+      : pathname === "/admin/models"
+        ? DEFAULT_PROJECT_ID
+        : "";
+    const modelDiscoverProjectId = projectModelsDiscoverMatch?.[1]
+      ? decodeURIComponent(projectModelsDiscoverMatch[1])
+      : pathname === "/admin/models/discover"
+        ? DEFAULT_PROJECT_ID
+        : "";
+
+    if (modelProjectId && request.method === "GET") {
+      const project = await this.getProjectOrNotFound(modelProjectId);
+      if (project instanceof Response) return project;
+      const settings = await this.getProjectModelSettings(modelProjectId);
+      return json({
+        models: settings.models,
+        publicModels: settings.models.map((model) => prefixProjectModel(project, model)),
+        project: toPublicProject(project, (await this.getAccounts()).filter((account) => account.projectId === project.id).length),
+      });
     }
 
-    if (pathname === "/admin/models" && request.method === "PATCH") {
+    if (modelProjectId && request.method === "PATCH") {
+      const project = await this.getProjectOrNotFound(modelProjectId);
+      if (project instanceof Response) return project;
       const payload = await readJsonBody<Partial<ModelSettings>>(request);
-      const next = { models: normalizeModelList(payload.models) };
-      await this.saveModelSettings(next);
-      return json({ ok: true, models: next.models });
+      const next = {
+        models: normalizeModelList(payload.models).map((model) => parseProjectModel(project, model).upstreamModel).filter(Boolean),
+      };
+      await this.saveProjectModelSettings(modelProjectId, next);
+      return json({
+        ok: true,
+        models: next.models,
+        publicModels: next.models.map((model) => prefixProjectModel(project, model)),
+      });
     }
 
-    if (pathname === "/admin/models/discover" && request.method === "POST") {
+    if (modelDiscoverProjectId && request.method === "POST") {
+      const project = await this.getProjectOrNotFound(modelDiscoverProjectId);
+      if (project instanceof Response) return project;
       let payload: { limit?: number } = {};
       if (request.headers.get("content-type")?.includes("application/json")) {
         payload = await readJsonBody<{ limit?: number }>(request);
@@ -3666,7 +3771,7 @@ export class RouterState extends DurableObject<Env> {
         this.getHealthMap(),
       ]);
       const enabled = accounts
-        .filter((account) => account.enabled)
+        .filter((account) => account.projectId === modelDiscoverProjectId && account.enabled)
         .sort((a, b) => {
           const aHealth = healthMap[a.id] ?? createEmptyHealth();
           const bHealth = healthMap[b.id] ?? createEmptyHealth();
@@ -3699,7 +3804,7 @@ export class RouterState extends DurableObject<Env> {
         }
       }
       const recommendations = [...modelMap.entries()]
-        .map(([model, labels]) => ({ model, accounts: labels.sort((a, b) => a.localeCompare(b)) }))
+        .map(([model, labels]) => ({ model, publicModel: prefixProjectModel(project, model), accounts: labels.sort((a, b) => a.localeCompare(b)) }))
         .sort((a, b) => b.accounts.length - a.accounts.length || a.model.localeCompare(b.model));
       return json({
         ok: results.some((item) => item.ok),
@@ -3792,16 +3897,18 @@ export class RouterState extends DurableObject<Env> {
   }
 
   private async handlePublicStatus(): Promise<Response> {
-    const [accounts, statsMap, healthMap, modelSettings, modelHourlyStats] = await Promise.all([
+    const [projects, accounts, statsMap, healthMap, allModelSettings, modelHourlyStats] = await Promise.all([
+      this.getProjects(),
       this.getAccounts(),
       this.getStatsMap(),
       this.getHealthMap(),
-      this.getModelSettings(),
+      this.getAllModelSettings(),
       this.getModelHourlyStats(),
     ]);
     const summary = summarizeAccounts(accounts, statsMap, healthMap);
     const hours = lastHourKeys(24);
-    const modelHealth = modelSettings.models.map((model) => {
+    const publicModels = projects.flatMap((project) => (allModelSettings[project.id]?.models ?? []).map((model) => prefixProjectModel(project, model)));
+    const modelHealth = publicModels.map((model) => {
       const stats = modelHourlyStats[model] ?? {};
       const buckets = hours.map((key) => {
         const bucket = stats[key] ?? createEmptyModelBucket();
@@ -3829,6 +3936,14 @@ export class RouterState extends DurableObject<Env> {
         hours: buckets,
       };
     });
+    const projectStats = projects.map((project) => {
+      const scoped = accounts.filter((account) => account.projectId === project.id);
+      return {
+        project: toPublicProject(project, scoped.length),
+        summary: summarizeAccounts(scoped, statsMap, healthMap),
+        models: (allModelSettings[project.id]?.models ?? []).map((model) => prefixProjectModel(project, model)),
+      };
+    });
     const state = summary.enabled === 0 || summary.available === 0
       ? "bad"
       : summary.actionRequired > 0
@@ -3845,8 +3960,9 @@ export class RouterState extends DurableObject<Env> {
       state,
       message,
       generatedAt: Date.now(),
-      models: modelSettings.models,
+      models: publicModels,
       modelHealth,
+      projectStats,
       summary: {
         total: summary.total,
         enabled: summary.enabled,
