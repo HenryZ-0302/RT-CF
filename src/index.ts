@@ -2700,6 +2700,53 @@ function renderAdminPageV2(): string {
   </div>
 
   <script>
+    const els = {
+      gate: document.getElementById("gate"),
+      app: document.getElementById("app"),
+      token: document.getElementById("token"),
+      gateStatus: document.getElementById("gate-status"),
+      pageTitle: document.getElementById("page-title"),
+      pageDesc: document.getElementById("page-desc"),
+      mobilePageTitle: document.getElementById("mobile-page-title"),
+      menuToggle: document.getElementById("menu-toggle"),
+      menuScrim: document.getElementById("menu-scrim"),
+      baseUrl: document.getElementById("base-url"),
+      currentProjectPill: document.getElementById("current-project-pill"),
+      projectSwitcher: document.getElementById("project-switcher"),
+      dashboardProjects: document.getElementById("dashboard-projects"),
+      modelHealth: document.getElementById("model-health"),
+      projectStatus: document.getElementById("project-status"),
+      accountStatus: document.getElementById("account-status"),
+      accountsTable: document.getElementById("accounts-table"),
+      settingsProjectLabel: document.getElementById("settings-project-label"),
+      projectKeys: document.getElementById("project-keys"),
+      keyStatus: document.getElementById("key-status"),
+      routingStatus: document.getElementById("routing-status"),
+      modelStatus: document.getElementById("model-status"),
+      opsStatus: document.getElementById("ops-status"),
+      projectModal: document.getElementById("project-modal"),
+      accountModal: document.getElementById("account-modal"),
+      modelModal: document.getElementById("model-modal"),
+      opsModal: document.getElementById("ops-modal"),
+    };
+    const pageMeta = {
+      dashboard: ["Dashboard", "Overview of global node health and traffic."],
+      projects: ["Workspaces", "Manage workspace node pools."],
+      settings: ["Configuration", "Manage keys, policies, models and ops."],
+    };
+    let projects = [];
+    let accounts = [];
+    let summary = {};
+    let projectStats = [];
+    let publicStatus = {};
+    let currentModels = [];
+    let discoveredModels = [];
+    let editingProjectId = null;
+    let selectedProjectId = localStorage.getItem("hyhub-selected-project") || "default-rt";
+    let selectedAccountIds = new Set();
+    if(els.token) els.token.value = localStorage.getItem("hyhub-admin-token") || "";
+    if(els.baseUrl) els.baseUrl.textContent = window.location.origin + "/v1";
+
     function getToken() { return els.token.value.trim(); }
     function status(el, message, danger) { el.textContent = message || ""; el.style.color = danger ? "var(--bad)" : "var(--muted)"; }
     function fmt(value) { const n = Number(value || 0); return n >= 1000 ? (n / 1000).toFixed(1) + "K" : String(n); }
