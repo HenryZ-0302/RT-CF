@@ -1624,7 +1624,7 @@ function renderAdminPageV2(): string {
       document.getElementById("project-name").value = project?.name || "";
       document.getElementById("project-enabled").checked = project?.enabled !== false;
       document.getElementById("project-model-mapping").value = project?.modelMapping ? JSON.stringify(project.modelMapping, null, 2) : "";
-      document.getElementById("project-disabled-models").value = project?.disabledModels?.length ? project.disabledModels.join("\n") : "";
+      document.getElementById("project-disabled-models").value = project?.disabledModels?.length ? project.disabledModels.join("\\n") : "";
       els.projectModal.classList.remove("hidden");
     }
     function closeProjectModal() {
@@ -1663,7 +1663,7 @@ function renderAdminPageV2(): string {
           const rawMap = document.getElementById("project-model-mapping").value.trim();
           if (rawMap) modelMapping = JSON.parse(rawMap);
         } catch(e) { throw new Error("模型映射 JSON 格式错误"); }
-        const disabledModels = document.getElementById("project-disabled-models").value.split(/[\n,]+/).map(m => m.trim()).filter(Boolean);
+        const disabledModels = document.getElementById("project-disabled-models").value.split(/[\\n,]+/).map(m => m.trim()).filter(Boolean);
         const payload = { 
           id: existing ? undefined : id || undefined, 
           name: document.getElementById("project-name").value.trim() || undefined, 
@@ -1890,6 +1890,7 @@ export default {
     const url = new URL(request.url);
     const pathname = url.pathname;
     if (pathname === "/health") return json({ ok: true });
+    if (pathname === "/favicon.ico") return new Response(null, { status: 204 });
     if (pathname === "/") return html(renderMonitorPage());
     if (pathname === "/admin" || pathname === "/admin/") return html(renderAdminPageV2());
     if (pathname === "/admin/ui") {
