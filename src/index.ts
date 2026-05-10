@@ -405,27 +405,30 @@ function renderMonitorPage(): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HYHub Status</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
       color-scheme: light dark;
-      --bg: #f5f7fa;
-      --panel: #ffffff;
-      --panel-soft: #f1f5f9;
-      --text: #172033;
+      --bg: #f0f4f8;
+      --panel: rgba(255,255,255,0.75);
+      --panel-soft: rgba(241,245,249,0.6);
+      --text: #0f172a;
       --muted: #64748b;
-      --line: rgba(23, 32, 51, 0.12);
-      --ok: #0f9f6e;
-      --warn: #b7791f;
-      --bad: #d64545;
-      --accent: #2563eb;
-      --shadow: 0 18px 46px rgba(15, 23, 42, 0.08);
+      --line: rgba(15,23,42,0.07);
+      --ok: #10b981;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --accent: #3b82f6;
+      --shadow: 0 8px 32px -4px rgba(15,23,42,0.08);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--bg);
+      background-image: radial-gradient(ellipse at 20% 0%, rgba(59,130,246,0.08) 0%, transparent 60%), radial-gradient(ellipse at 80% 100%, rgba(139,92,246,0.06) 0%, transparent 50%);
       color: var(--text);
     }
     .wrap { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 24px 0 72px; }
@@ -452,8 +455,8 @@ function renderMonitorPage(): string {
       height: 32px;
       border-radius: 8px;
       color: #fff;
-      background: var(--accent);
-      box-shadow: 0 10px 22px rgba(37, 99, 235, 0.18);
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      box-shadow: 0 8px 20px rgba(59,130,246,0.3);
     }
     .admin-link {
       display: inline-flex;
@@ -476,10 +479,13 @@ function renderMonitorPage(): string {
     }
     .hero, .status-tile, .card {
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 16px;
       background: var(--panel);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
       box-shadow: var(--shadow);
+      transition: transform 200ms ease, box-shadow 200ms ease;
     }
+    .card:hover { transform: translateY(-4px); box-shadow: 0 16px 48px -8px rgba(15,23,42,0.14); }
     .hero { padding: clamp(20px, 3vw, 30px); display: grid; gap: 12px; }
     .eyebrow { color: var(--accent); font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
     h1 { margin: 0; max-width: 760px; font-size: clamp(32px, 5vw, 54px); line-height: 1; letter-spacing: 0; text-wrap: pretty; }
@@ -536,12 +542,15 @@ function renderMonitorPage(): string {
     .model-search {
       width: 100%;
       border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 10px 12px;
+      border-radius: 12px;
+      padding: 10px 14px;
       color: var(--text);
       background: var(--panel);
+      backdrop-filter: blur(8px);
       font: inherit;
+      transition: border-color 150ms ease, box-shadow 150ms ease;
     }
+    .model-search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.12); }
     .model-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
     .model-tab {
       border: 1px solid var(--line);
@@ -553,7 +562,9 @@ function renderMonitorPage(): string {
       font: inherit;
       box-shadow: none;
     }
-    .model-tab.active { color: var(--accent); border-color: rgba(37, 99, 235, 0.36); background: rgba(37, 99, 235, 0.08); }
+    .model-tab { transition: all 180ms ease; }
+    .model-tab:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
+    .model-tab.active { color: #fff; border-color: transparent; background: linear-gradient(135deg, #3b82f6, #8b5cf6); }
     .model-table-wrap { overflow-x: auto; overflow-y: visible; }
     .model-table { display: grid; min-width: 860px; }
     .model-row {
@@ -589,14 +600,16 @@ function renderMonitorPage(): string {
     .hour-cell {
       width: 18px;
       height: 18px;
-      border-radius: 4px;
+      border-radius: 6px;
       background: rgba(100, 116, 139, 0.16);
+      transition: transform 120ms ease;
       border: 1px solid rgba(100, 116, 139, 0.14);
       cursor: help;
       position: relative;
       flex: 0 0 auto;
     }
-    .hour-cell.good { background: rgba(15, 159, 110, 0.72); border-color: rgba(15, 159, 110, 0.42); }
+    .hour-cell:hover { transform: scaleY(1.3); z-index: 2; }
+    .hour-cell.good { background: rgba(16,185,129,0.75); border-color: rgba(16,185,129,0.4); }
     .hour-cell.warn { background: rgba(183, 121, 31, 0.62); border-color: rgba(183, 121, 31, 0.38); }
     .hour-cell.bad { background: rgba(214, 69, 69, 0.70); border-color: rgba(214, 69, 69, 0.42); }
     .model-badge {
@@ -630,7 +643,8 @@ function renderMonitorPage(): string {
       border-radius: 8px;
       color: var(--text);
       background: var(--panel);
-      box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
+      box-shadow: 0 18px 44px rgba(15,23,42,0.16);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
       pointer-events: none;
       opacity: 0;
       transform: translateY(6px);
@@ -650,15 +664,15 @@ function renderMonitorPage(): string {
     }
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg: #0f172a;
-        --panel: #111c2f;
-        --panel-soft: #16243a;
-        --text: #e5edf8;
+        --bg: #0b0d17;
+        --panel: rgba(255,255,255,0.04);
+        --panel-soft: rgba(255,255,255,0.06);
+        --text: #f1f5f9;
         --muted: #94a3b8;
-        --line: rgba(226, 232, 240, 0.12);
-        --shadow: 0 18px 46px rgba(0, 0, 0, 0.28);
+        --line: rgba(255,255,255,0.07);
+        --shadow: 0 8px 32px -4px rgba(0,0,0,0.5);
       }
-      body { background: var(--bg); }
+      body { background: var(--bg); background-image: radial-gradient(ellipse at 20% 0%, rgba(59,130,246,0.06) 0%, transparent 60%), radial-gradient(ellipse at 80% 100%, rgba(139,92,246,0.04) 0%, transparent 50%); }
     }
     @media (max-width: 820px) { .masthead { grid-template-columns: 1fr; } .grid { grid-template-columns: 1fr 1fr; } }
     @media (max-width: 640px) { .model-head { grid-template-columns: 1fr; } }
@@ -2232,27 +2246,29 @@ function renderAdminPageV2(): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HYHub Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
       color-scheme: light dark;
-      --bg: #f5f7fa;
-      --panel: #ffffff;
-      --panel-soft: #f1f5f9;
-      --text: #172033;
+      --bg: #f0f4f8;
+      --panel: rgba(255,255,255,0.75);
+      --panel-soft: rgba(241,245,249,0.6);
+      --text: #0f172a;
       --muted: #64748b;
-      --line: rgba(23, 32, 51, 0.12);
-      --accent: #2563eb;
-      --ok: #0f9f6e;
-      --warn: #b7791f;
-      --bad: #d64545;
-      --shadow: 0 18px 46px rgba(15, 23, 42, 0.08);
+      --line: rgba(15,23,42,0.07);
+      --accent: #3b82f6;
+      --ok: #10b981;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --shadow: 0 8px 32px -4px rgba(15,23,42,0.08);
     }
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; overflow-x: hidden; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    body { margin: 0; min-height: 100vh; overflow-x: hidden; font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); background-image: radial-gradient(ellipse at 15% 0%, rgba(59,130,246,0.07) 0%, transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(139,92,246,0.05) 0%, transparent 50%); color: var(--text); }
     body.menu-lock { overflow: hidden; }
     .hidden { display: none !important; }
     .gate { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
-    .gate-card, .panel { background: var(--panel); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+    .gate-card, .panel { background: var(--panel); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
     .gate-card { width: min(440px, 100%); padding: 28px; display: grid; gap: 14px; }
     .shell { min-height: 100vh; display: grid; grid-template-columns: 276px minmax(0, 1fr); width: 100%; overflow-x: clip; }
     .mobile-bar { display: none; }
@@ -2262,14 +2278,18 @@ function renderAdminPageV2(): string {
     .brand p, .muted { color: var(--muted); line-height: 1.55; }
     nav { display: grid; gap: 8px; }
     .nav-btn { justify-content: flex-start; background: transparent; color: var(--text); border: 1px solid transparent; }
-    .nav-btn.active { background: var(--panel-soft); border-color: var(--line); color: var(--accent); }
+    .nav-btn.active { background: linear-gradient(135deg, rgba(59,130,246,0.12), rgba(139,92,246,0.08)); border-color: rgba(59,130,246,0.25); color: var(--accent); }
+    .nav-btn { transition: all 150ms ease; }
+    .nav-btn:hover:not(.active) { background: var(--panel-soft); }
     .side-section { border-top: 1px solid var(--line); padding-top: 14px; display: grid; gap: 10px; }
     .side-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .side-head span { color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
     .icon-btn { width: 34px; height: 34px; padding: 0; display: grid; place-items: center; border-radius: 8px; }
     .project-switcher { display: grid; gap: 7px; }
     .project-item { width: 100%; text-align: left; display: grid; gap: 5px; padding: 10px; border: 1px solid transparent; background: transparent; color: var(--text); }
-    .project-item.active { border-color: rgba(37, 99, 235, .45); background: var(--panel-soft); color: var(--accent); }
+    .project-item.active { border-color: rgba(59,130,246,0.35); background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.05)); color: var(--accent); }
+    .project-item { transition: all 150ms ease; border-radius: 10px; }
+    .project-item:hover:not(.active) { background: var(--panel-soft); }
     .project-item .meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
     .sidebar-actions { margin-top: auto; display: grid; gap: 8px; }
     main { min-width: 0; max-width: 100%; overflow-x: hidden; padding: 22px; display: grid; gap: 16px; align-content: start; }
@@ -2279,7 +2299,7 @@ function renderAdminPageV2(): string {
     h3 { font-size: 17px; }
     button, input, textarea, select { font: inherit; border-radius: 8px; }
     button { border: 0; padding: 10px 13px; background: var(--accent); color: #fff; cursor: pointer; transition: transform 120ms ease, box-shadow 120ms ease; }
-    button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59,130,246,0.25); }
+    button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(59,130,246,0.25); }
     button.secondary { background: #334155; }
     button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
     button.danger { background: var(--bad); }
@@ -2294,7 +2314,8 @@ function renderAdminPageV2(): string {
     .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .stats { min-width: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
-    .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+    .stat { background: var(--panel); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--line); border-radius: 14px; padding: 14px; transition: transform 200ms ease; }
+    .stat:hover { transform: translateY(-2px); }
     .stat b { display: block; font-size: 25px; margin-bottom: 6px; }
     .workspace-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
     .workspace-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -2326,8 +2347,8 @@ function renderAdminPageV2(): string {
     .track { height: 8px; border-radius: 99px; background: var(--panel-soft); overflow: hidden; }
     .track i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--ok)); }
     .modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 18px; background: rgba(15,23,42,0.48); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
-    .modal { width: min(520px, 100%); max-height: min(86vh, 760px); overflow: auto; background: var(--panel); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 28px 80px rgba(15,23,42,0.28); padding: 18px; display: grid; gap: 14px; animation: modalIn 200ms ease-out; }
-    @keyframes modalIn { from { opacity: 0; transform: scale(0.96) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+    .modal { width: min(520px, 100%); max-height: min(86vh, 760px); overflow: auto; background: var(--panel); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 28px 80px rgba(15,23,42,0.28); padding: 18px; display: grid; gap: 14px; animation: modalIn 200ms ease-out; }
+    @keyframes modalIn { from { opacity:0; transform: scale(0.96) translateY(8px); } to { opacity:1; transform: none; } }
     .modal.wide { width: min(760px, 100%); }
     .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
     @media (max-width: 1180px) { .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
@@ -2418,6 +2439,19 @@ function renderAdminPageV2(): string {
     }
     @supports not (background: color-mix(in srgb, white, transparent)) {
       @media (max-width: 760px) { .mobile-bar { background: var(--panel); } }
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0d17;
+        --panel: rgba(255,255,255,0.04);
+        --panel-soft: rgba(255,255,255,0.06);
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --line: rgba(255,255,255,0.07);
+        --shadow: 0 8px 32px -4px rgba(0,0,0,0.5);
+      }
+      body { background-image: radial-gradient(ellipse at 15% 0%, rgba(59,130,246,0.05) 0%, transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(139,92,246,0.04) 0%, transparent 50%); }
+      aside { background: rgba(255,255,255,0.03); }
     }
   </style>
 </head>
