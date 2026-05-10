@@ -2738,7 +2738,6 @@ function renderAdminPageV2(): string {
       projectStatus: document.getElementById("project-status"),
       accountStatus: document.getElementById("account-status"),
       accountsTable: document.getElementById("accounts-table"),
-      settingsProjectLabel: document.getElementById("settings-project-label"),
       keysTable: document.getElementById("keys-table"),
       keyStatus: document.getElementById("key-status"),
       routingStatus: document.getElementById("routing-status"),
@@ -2826,7 +2825,6 @@ function renderAdminPageV2(): string {
       const itemSummary = project ? projectStat(project.id) : {};
       const label = project ? project.name + ' · ' + project.id : '未选择项目';
       els.currentProjectPill.textContent = label;
-      els.settingsProjectLabel.textContent = label;
       document.getElementById("workspace-project-name").textContent = project ? project.name : "当前项目";
       document.getElementById("selected-project-tag").textContent = project ? project.id : "未选择";
       document.getElementById("workspace-project-meta").textContent = project
@@ -4270,3 +4268,12 @@ export class RouterState extends DurableObject<Env> {
     return this.proxyRequest(request);
   }
 }
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const id = env.ROUTER_STATE.idFromName("global");
+    const obj = env.ROUTER_STATE.get(id);
+    return obj.fetch(request);
+  },
+};
+
