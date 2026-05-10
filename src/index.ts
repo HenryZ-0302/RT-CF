@@ -2324,7 +2324,8 @@ function renderAdminPageV2(): string {
     .track { height: 8px; border-radius: 99px; background: var(--panel-soft); overflow: hidden; }
     .track i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--ok)); }
     .modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 18px; background: rgba(15, 23, 42, .48); }
-    .modal { width: min(520px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 28px 80px rgba(15, 23, 42, .28); padding: 18px; display: grid; gap: 14px; }
+    .modal { width: min(520px, 100%); max-height: min(86vh, 760px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 28px 80px rgba(15, 23, 42, .28); padding: 18px; display: grid; gap: 14px; }
+    .modal.wide { width: min(760px, 100%); }
     .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
     @media (max-width: 1180px) { .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
     @media (max-width: 1040px) {
@@ -2501,19 +2502,8 @@ function renderAdminPageV2(): string {
               <div class="status" id="project-status"></div>
             </div>
             <div class="panel">
-              <div class="row"><h3>上游账号池</h3><button id="clear-account" class="ghost">清空表单</button></div>
-              <div class="grid two" style="margin-top:12px">
-                <input id="account-id" placeholder="账号 ID（可留空）" />
-                <input id="account-label" placeholder="显示名称" />
-                <input id="account-base-url" placeholder="上游 Base URL" />
-                <input id="account-api-key" placeholder="上游 API Key（新账号必填）" />
-                <input id="account-weight" type="number" min="1" max="20" step="1" placeholder="权重 1-20" />
-                <select id="account-enabled"><option value="true">启用</option><option value="false">停用</option></select>
-              </div>
-              <textarea id="account-extra-headers" style="margin-top:10px" placeholder='额外请求头 JSON，例如 {"OpenAI-Organization":"org_xxx"}'></textarea>
+              <div class="row"><h3>上游账号池</h3><div class="actions"><button id="new-account">添加账号</button><button id="test-project-accounts" class="secondary">检测当前项目</button></div></div>
               <div class="actions">
-                <button id="save-account">保存账号</button>
-                <button id="test-project-accounts" class="secondary">检测当前项目</button>
                 <button id="batch-enable" class="ghost">批量启用</button>
                 <button id="batch-disable" class="ghost">批量停用</button>
               </div>
@@ -2547,31 +2537,18 @@ function renderAdminPageV2(): string {
           </section>
           <section class="panel">
             <h3>开放模型</h3>
-            <p class="muted">从当前项目账号池拉取模型，勾选后对外显示为 项目ID/模型名，例如 example/gpt-5.5；转发上游时会自动去掉项目前缀。</p>
-            <textarea id="open-models" class="hidden" placeholder="一行一个模型"></textarea>
-            <div class="grid two" style="margin-top:10px">
-              <input id="model-discovery-limit" type="number" min="1" max="50" step="1" value="8" placeholder="扫描账号数" />
-              <input id="api-test-model" placeholder="账号检测模型，默认 gpt-4.1-mini" />
-            </div>
-            <div class="actions">
-              <button id="discover-models" class="secondary">从账号池拉取模型</button>
-              <button id="save-models">保存开放模型</button>
-            </div>
+            <p class="muted">模型跟随侧边栏当前项目。客户端使用 项目ID/模型名，例如 example/gpt-5.5。</p>
             <div id="enabled-models-summary" class="muted" style="margin-top:10px"></div>
-            <div id="discovered-models" class="model-grid"></div>
-            <details class="advanced-models">
-              <summary>高级：手动编辑模型列表</summary>
-              <textarea id="open-models-advanced" placeholder="一行一个模型，例如 gpt-5.5"></textarea>
-            </details>
+            <div class="actions">
+              <button id="open-model-manager">管理开放模型</button>
+            </div>
             <div class="status" id="model-status"></div>
           </section>
           <section class="panel">
             <h3>导入 / 导出 / 统计</h3>
             <p class="muted">导入导出作用于侧边栏当前项目账号池；清空统计只清真实 API 调用统计。</p>
             <div class="actions">
-              <button id="export-accounts" class="secondary">导出账号</button>
-              <button id="import-accounts" class="secondary">导入账号</button>
-              <button id="reset-stats" class="danger">清空统计</button>
+              <button id="open-ops-modal" class="secondary">打开数据操作</button>
             </div>
             <div class="status" id="ops-status"></div>
           </section>
@@ -2597,6 +2574,74 @@ function renderAdminPageV2(): string {
       <div class="actions">
         <button id="save-project">保存项目</button>
         <button id="cancel-project-modal" class="ghost">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="account-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal wide">
+      <div class="modal-head">
+        <div>
+          <h3 id="account-modal-title">添加账号</h3>
+          <p class="muted" style="margin:6px 0 0">账号会加入侧边栏当前项目的上游账号池。</p>
+        </div>
+        <button id="close-account-modal" class="ghost icon-btn" aria-label="关闭">×</button>
+      </div>
+      <div class="grid two">
+        <input id="account-id" placeholder="账号 ID（可留空）" />
+        <input id="account-label" placeholder="显示名称" />
+        <input id="account-base-url" placeholder="上游 Base URL" />
+        <input id="account-api-key" placeholder="上游 API Key（新账号必填，编辑时留空则保持不变）" />
+        <input id="account-weight" type="number" min="1" max="20" step="1" placeholder="权重 1-20" />
+        <select id="account-enabled"><option value="true">启用</option><option value="false">停用</option></select>
+      </div>
+      <textarea id="account-extra-headers" placeholder='额外请求头 JSON，例如 {"OpenAI-Organization":"org_xxx"}'></textarea>
+      <div class="actions">
+        <button id="save-account">保存账号</button>
+        <button id="cancel-account-modal" class="ghost">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="model-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal wide">
+      <div class="modal-head">
+        <div>
+          <h3>开放模型</h3>
+          <p class="muted" style="margin:6px 0 0">从当前项目账号池拉取模型，勾选后保存。对外模型名会自动加项目前缀。</p>
+        </div>
+        <button id="close-model-modal" class="ghost icon-btn" aria-label="关闭">×</button>
+      </div>
+      <textarea id="open-models" class="hidden" placeholder="一行一个模型"></textarea>
+      <div class="grid two">
+        <input id="model-discovery-limit" type="number" min="1" max="50" step="1" value="8" placeholder="扫描账号数" />
+        <input id="api-test-model" placeholder="账号检测模型，默认 gpt-4.1-mini" />
+      </div>
+      <div class="actions">
+        <button id="discover-models" class="secondary">从账号池拉取模型</button>
+        <button id="save-models">保存开放模型</button>
+      </div>
+      <div id="discovered-models" class="model-grid"></div>
+      <details class="advanced-models">
+        <summary>高级：手动编辑模型列表</summary>
+        <textarea id="open-models-advanced" placeholder="一行一个模型，例如 gpt-5.5"></textarea>
+      </details>
+    </div>
+  </div>
+
+  <div id="ops-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h3>数据操作</h3>
+          <p class="muted" style="margin:6px 0 0">这些操作作用于侧边栏当前项目，清空统计会影响全局真实调用统计。</p>
+        </div>
+        <button id="close-ops-modal" class="ghost icon-btn" aria-label="关闭">×</button>
+      </div>
+      <div class="actions">
+        <button id="export-accounts" class="secondary">导出账号</button>
+        <button id="import-accounts" class="secondary">导入账号</button>
+        <button id="reset-stats" class="danger">清空统计</button>
       </div>
     </div>
   </div>
@@ -2627,6 +2672,9 @@ function renderAdminPageV2(): string {
       modelStatus: document.getElementById("model-status"),
       opsStatus: document.getElementById("ops-status"),
       projectModal: document.getElementById("project-modal"),
+      accountModal: document.getElementById("account-modal"),
+      modelModal: document.getElementById("model-modal"),
+      opsModal: document.getElementById("ops-modal"),
     };
     const pageMeta = {
       dashboard: ["仪表盘", "查看整体项目、账号池和调用健康。"],
@@ -2836,6 +2884,36 @@ function renderAdminPageV2(): string {
       editingProjectId = null;
       els.projectModal.classList.add("hidden");
     }
+    function openAccountModal(account) {
+      document.getElementById("account-modal-title").textContent = account ? "编辑账号" : "添加账号";
+      clearAccountForm();
+      if (account) {
+        document.getElementById("account-id").value = account.id;
+        document.getElementById("account-label").value = account.label || "";
+        document.getElementById("account-base-url").value = account.baseUrl || "";
+        document.getElementById("account-api-key").value = "";
+        document.getElementById("account-weight").value = account.weight || 1;
+        document.getElementById("account-enabled").value = account.enabled ? "true" : "false";
+        document.getElementById("account-extra-headers").value = JSON.stringify(account.extraHeaders || {}, null, 2);
+      }
+      els.accountModal.classList.remove("hidden");
+    }
+    function closeAccountModal() {
+      els.accountModal.classList.add("hidden");
+    }
+    function openModelModal() {
+      renderModelPicker();
+      els.modelModal.classList.remove("hidden");
+    }
+    function closeModelModal() {
+      els.modelModal.classList.add("hidden");
+    }
+    function openOpsModal() {
+      els.opsModal.classList.remove("hidden");
+    }
+    function closeOpsModal() {
+      els.opsModal.classList.add("hidden");
+    }
     async function saveProject() {
       try {
         const id = document.getElementById("project-id").value.trim();
@@ -2879,6 +2957,7 @@ function renderAdminPageV2(): string {
         };
         await api(existing ? projectPath("/accounts/" + encodeURIComponent(id)) : projectPath("/accounts"), { method: existing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
         clearAccountForm();
+        closeAccountModal();
         await refreshAll();
         status(els.accountStatus, "账号已保存。");
       } catch (error) { status(els.accountStatus, error.message, true); }
@@ -2886,13 +2965,7 @@ function renderAdminPageV2(): string {
     window.editAccount = function(id) {
       const account = accounts.find((item) => item.id === id);
       if (!account) return;
-      document.getElementById("account-id").value = account.id;
-      document.getElementById("account-label").value = account.label || "";
-      document.getElementById("account-base-url").value = account.baseUrl || "";
-      document.getElementById("account-api-key").value = "";
-      document.getElementById("account-weight").value = account.weight || 1;
-      document.getElementById("account-enabled").value = account.enabled ? "true" : "false";
-      document.getElementById("account-extra-headers").value = JSON.stringify(account.extraHeaders || {}, null, 2);
+      openAccountModal(account);
     };
     window.toggleAccount = async function(id, enabled) {
       await api(projectPath("/accounts/" + encodeURIComponent(id)), { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled }) });
@@ -2948,6 +3021,7 @@ function renderAdminPageV2(): string {
         document.getElementById("open-models").value = models.join("\\n");
         document.getElementById("open-models-advanced").value = models.join("\\n");
         renderModelPicker();
+        closeModelModal();
         status(els.modelStatus, "开放模型已保存。");
       } catch (error) { status(els.modelStatus, error.message, true); }
     }
@@ -2987,6 +3061,7 @@ function renderAdminPageV2(): string {
       link.download = selectedProjectId + "-accounts.json";
       link.click();
       URL.revokeObjectURL(url);
+      closeOpsModal();
       status(els.opsStatus, "账号已导出。");
     }
     async function importAccounts() {
@@ -2999,6 +3074,7 @@ function renderAdminPageV2(): string {
         const payload = JSON.parse(await file.text());
         await api(projectPath("/accounts/import"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
         await refreshAll();
+        closeOpsModal();
         status(els.opsStatus, "账号已导入。");
       };
       input.click();
@@ -3007,6 +3083,7 @@ function renderAdminPageV2(): string {
       if (!confirm("确认清空真实 API 调用统计？")) return;
       await api("/admin/stats/reset", { method: "POST" });
       await refreshAll();
+      closeOpsModal();
       status(els.opsStatus, "统计已清空。");
     }
     document.querySelectorAll(".nav-btn").forEach((btn) => btn.addEventListener("click", () => setPage(btn.dataset.page)));
@@ -3024,10 +3101,19 @@ function renderAdminPageV2(): string {
     document.getElementById("close-project-modal").addEventListener("click", closeProjectModal);
     document.getElementById("cancel-project-modal").addEventListener("click", closeProjectModal);
     els.projectModal.addEventListener("click", (event) => { if (event.target === els.projectModal) closeProjectModal(); });
-    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeProjectModal(); });
+    document.getElementById("new-account").addEventListener("click", () => openAccountModal(null));
+    document.getElementById("close-account-modal").addEventListener("click", closeAccountModal);
+    document.getElementById("cancel-account-modal").addEventListener("click", closeAccountModal);
+    els.accountModal.addEventListener("click", (event) => { if (event.target === els.accountModal) closeAccountModal(); });
+    document.getElementById("open-model-manager").addEventListener("click", openModelModal);
+    document.getElementById("close-model-modal").addEventListener("click", closeModelModal);
+    els.modelModal.addEventListener("click", (event) => { if (event.target === els.modelModal) closeModelModal(); });
+    document.getElementById("open-ops-modal").addEventListener("click", openOpsModal);
+    document.getElementById("close-ops-modal").addEventListener("click", closeOpsModal);
+    els.opsModal.addEventListener("click", (event) => { if (event.target === els.opsModal) closeOpsModal(); });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") { closeProjectModal(); closeAccountModal(); closeModelModal(); closeOpsModal(); } });
     document.getElementById("save-project").addEventListener("click", saveProject);
     document.getElementById("delete-project").addEventListener("click", deleteProject);
-    document.getElementById("clear-account").addEventListener("click", clearAccountForm);
     document.getElementById("save-account").addEventListener("click", saveAccount);
     document.getElementById("test-project-accounts").addEventListener("click", async () => { const data = await api(projectPath("/accounts/test-all"), { method: "POST" }); status(els.accountStatus, "检测完成：" + (data.okCount || 0) + "/" + (data.total || 0) + " 可用。"); await refreshAll(); });
     document.getElementById("batch-enable").addEventListener("click", () => batchToggle(true));
