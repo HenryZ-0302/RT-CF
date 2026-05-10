@@ -2989,7 +2989,7 @@ function renderAdminPageV2(): string {
       div.innerHTML = '<button onclick="editSpecificProject(\\'' + projectId + '\\')">配置项目</button><button class="danger-text" onclick="deleteSpecificProject(\\'' + projectId + '\\')">删除项目</button>';
       document.body.appendChild(div); activeDropdown = div;
     };
-    window.editSpecificProject = function(id) { selectProject(id); openProjectModal(true); };
+    window.editSpecificProject = function(id) { selectProject(id); openProjectModal(projects.find(p => p.id === id)); };
     window.deleteSpecificProject = async function(id) {
       const project = projects.find((p) => p.id === id);
       if (!project) return;
