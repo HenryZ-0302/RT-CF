@@ -2453,6 +2453,18 @@ function renderAdminPageV2(): string {
       body { background-image: radial-gradient(ellipse at 15% 0%, rgba(59,130,246,0.05) 0%, transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(139,92,246,0.04) 0%, transparent 50%); }
       aside { background: rgba(255,255,255,0.03); }
     }
+    .dropdown { position: absolute; z-index: 50; background: var(--panel); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 36px rgba(0,0,0,0.15); padding: 6px; display: flex; flex-direction: column; gap: 2px; min-width: 140px; animation: modalIn 150ms ease-out; }
+    .dropdown button { background: transparent; color: var(--text); padding: 8px 12px; text-align: left; font-size: 13px; border-radius: 6px; transition: background 150ms; box-shadow: none; transform: none; }
+    .dropdown button:hover { background: var(--panel-soft); }
+    .dropdown button.danger-text { color: var(--bad); }
+    .dropdown button.danger-text:hover { background: rgba(239, 68, 68, 0.1); }
+    .project-item-wrap { position: relative; display: flex; align-items: stretch; border: 1px solid transparent; border-radius: 10px; transition: all 150ms ease; margin-bottom: 2px; }
+    .project-item-wrap.active { border-color: rgba(59,130,246,0.35); background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.05)); }
+    .project-item-wrap:hover:not(.active) { background: var(--panel-soft); }
+    .project-item-wrap .project-item { border: none !important; background: transparent !important; margin: 0; }
+    .project-dots { width: 32px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; background: transparent; color: var(--muted); border: none; cursor: pointer; border-radius: 0 10px 10px 0; opacity: 0.5; transition: opacity 150ms; box-shadow: none; transform: none; padding: 0; }
+    .project-item-wrap:hover .project-dots { opacity: 1; }
+    .project-dots:hover { background: rgba(0,0,0,0.05); }
   </style>
 </head>
 <body>
@@ -2533,7 +2545,6 @@ function renderAdminPageV2(): string {
                 </div>
                 <div class="actions">
                   <button id="edit-project" class="ghost">编辑项目</button>
-                  <button id="delete-project" class="danger">删除项目</button>
                 </div>
               </div>
               <div class="status" id="project-status"></div>
@@ -2776,7 +2787,11 @@ function renderAdminPageV2(): string {
     function renderProjectSwitcher() {
       els.projectSwitcher.innerHTML = projects.length ? projects.map((project) => {
         const itemSummary = projectStat(project.id);
-        return '<button class="project-item ' + (project.id === selectedProjectId ? 'active' : '') + '" onclick="selectProject(\\'' + escapeHtml(project.id) + '\\')"><b>' + escapeHtml(project.name) + '</b><span class="meta"><span class="mono">' + escapeHtml(project.id) + '</span><span>' + (itemSummary.available || 0) + '/' + (project.accountCount || 0) + '</span></span></button>';
+        const isActive = project.id === selectedProjectId;
+        return '<div class="project-item-wrap ' + (isActive ? 'active' : '') + '">' +
+          '<button class="project-item" style="flex:1" onclick="selectProject(\\'' + escapeHtml(project.id) + '\\')"><b>' + escapeHtml(project.name) + '</b><span class="meta"><span class="mono">' + escapeHtml(project.id) + '</span><span>' + (itemSummary.available || 0) + '/' + (project.accountCount || 0) + '</span></span></button>' +
+          '<button class="project-dots" onclick="openProjectDropdown(event, \\'' + escapeHtml(project.id) + '\\')">⋮</button>' +
+          '</div>';
       }).join("") : '<div class="empty">暂无项目。</div>';
     }
     function renderCurrentProjectContext() {
@@ -2963,18 +2978,29 @@ function renderAdminPageV2(): string {
         status(els.projectStatus, "项目已保存。");
       } catch (error) { status(els.projectStatus, error.message, true); }
     }
-    async function deleteProject() {
-      const project = selectedProject();
+    let activeDropdown = null;
+    function closeDropdown() { if (activeDropdown) { activeDropdown.remove(); activeDropdown = null; } }
+    document.addEventListener("click", closeDropdown);
+    window.openProjectDropdown = function(event, projectId) {
+      event.stopPropagation(); closeDropdown();
+      const btn = event.currentTarget; const rect = btn.getBoundingClientRect();
+      const div = document.createElement("div"); div.className = "dropdown";
+      div.style.top = (rect.bottom + window.scrollY) + "px"; div.style.left = (rect.left + window.scrollX) + "px";
+      div.innerHTML = '<button onclick="editSpecificProject(\\'' + projectId + '\\')">配置项目</button><button class="danger-text" onclick="deleteSpecificProject(\\'' + projectId + '\\')">删除项目</button>';
+      document.body.appendChild(div); activeDropdown = div;
+    };
+    window.editSpecificProject = function(id) { selectProject(id); openProjectModal(true); };
+    window.deleteSpecificProject = async function(id) {
+      const project = projects.find((p) => p.id === id);
       if (!project) return;
-      const message = project.id === "default-rt" ? "这是默认 RT 项目，确认删除？删除后系统会在下次读取时重新创建空默认项目。" : "确认删除这个项目？";
+      const message = project.id === "default-rt" ? "这是默认 RT 项目，确认删除？删除后系统会自动重建。" : "确认彻底删除项目 [" + escapeHtml(project.name || project.id) + "] 吗？";
       if (!confirm(message)) return;
       try {
         await api("/admin/projects/" + encodeURIComponent(project.id), { method: "DELETE" });
-        selectedProjectId = "default-rt";
-        await refreshAll();
-        status(els.projectStatus, "项目已删除。");
+        if (selectedProjectId === id) selectedProjectId = "default-rt";
+        await refreshAll(); status(els.projectStatus, "项目已删除。");
       } catch (error) { status(els.projectStatus, error.message, true); }
-    }
+    };
     function clearAccountForm() {
       ["account-id", "account-label", "account-base-url", "account-api-key", "account-weight", "account-extra-headers"].forEach((id) => document.getElementById(id).value = "");
       document.getElementById("account-enabled").value = "true";
@@ -3150,7 +3176,6 @@ function renderAdminPageV2(): string {
     els.opsModal.addEventListener("click", (event) => { if (event.target === els.opsModal) closeOpsModal(); });
     document.addEventListener("keydown", (event) => { if (event.key === "Escape") { closeProjectModal(); closeAccountModal(); closeModelModal(); closeOpsModal(); } });
     document.getElementById("save-project").addEventListener("click", saveProject);
-    document.getElementById("delete-project").addEventListener("click", deleteProject);
     document.getElementById("save-account").addEventListener("click", saveAccount);
     document.getElementById("test-project-accounts").addEventListener("click", async () => { const data = await api(projectPath("/accounts/test-all"), { method: "POST" }); status(els.accountStatus, "检测完成：" + (data.okCount || 0) + "/" + (data.total || 0) + " 可用。"); await refreshAll(); });
     document.getElementById("batch-enable").addEventListener("click", () => batchToggle(true));
