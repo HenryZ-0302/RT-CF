@@ -405,8 +405,8 @@ function renderMonitorPage(): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HYHub Status</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/misans@4.0.0/lib/Normal/MiSans-Regular.min.css" />
+  <link rel="stylesheet" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/misans@4.0.0/lib/Normal/MiSans-Semibold.min.css" />
   <style>
     :root {
       color-scheme: light dark;
@@ -426,7 +426,7 @@ function renderMonitorPage(): string {
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: 'MiSans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--bg);
       background-image: radial-gradient(ellipse at 20% 0%, rgba(59,130,246,0.08) 0%, transparent 60%), radial-gradient(ellipse at 80% 100%, rgba(139,92,246,0.06) 0%, transparent 50%);
       color: var(--text);
@@ -2246,8 +2246,8 @@ function renderAdminPageV2(): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HYHub Admin</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/misans@4.0.0/lib/Normal/MiSans-Regular.min.css" />
+  <link rel="stylesheet" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/misans@4.0.0/lib/Normal/MiSans-Semibold.min.css" />
   <style>
     :root {
       color-scheme: light dark;
@@ -2264,7 +2264,7 @@ function renderAdminPageV2(): string {
       --shadow: 0 8px 32px -4px rgba(15,23,42,0.08);
     }
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; overflow-x: hidden; font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); background-image: radial-gradient(ellipse at 15% 0%, rgba(59,130,246,0.07) 0%, transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(139,92,246,0.05) 0%, transparent 50%); color: var(--text); }
+    body { margin: 0; min-height: 100vh; overflow-x: hidden; font-family: 'MiSans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); background-image: radial-gradient(ellipse at 15% 0%, rgba(59,130,246,0.07) 0%, transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(139,92,246,0.05) 0%, transparent 50%); color: var(--text); }
     body.menu-lock { overflow: hidden; }
     .hidden { display: none !important; }
     .gate { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
