@@ -310,8 +310,8 @@ function sanitizeProjectInput(payload: ProjectInput, existing?: ProjectRecord): 
     id,
     name: payload.name?.trim() || existing?.name || id,
     enabled: payload.enabled ?? existing?.enabled ?? true,
-    modelMapping: payload.modelMapping ?? existing?.modelMapping ?? {},
-    disabledModels: payload.disabledModels ?? existing?.disabledModels ?? [],
+    modelMapping: payload.modelMapping === undefined ? existing?.modelMapping ?? {} : normalizeModelMapping(payload.modelMapping),
+    disabledModels: payload.disabledModels === undefined ? existing?.disabledModels ?? [] : normalizeDisabledModels(payload.disabledModels),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -1453,6 +1453,9 @@ function renderAdminPageV2(): string {
     function selectedProject() { return projects.find((project) => project.id === selectedProjectId) || projects[0] || null; }
     function projectPath(path) { return "/admin/projects/" + encodeURIComponent(selectedProjectId) + path; }
     function projectStat(id) { return projectStats.find((item) => item.project?.id === id)?.summary || {}; }
+    function projectKeyCount(projectId) {
+      return globalKeys.filter((key) => key.projects === "ALL" || (Array.isArray(key.projects) && key.projects.includes(projectId))).length;
+    }
     function parseHeaders() {
       const raw = document.getElementById("account-extra-headers").value.trim();
       return raw ? JSON.parse(raw) : undefined;
@@ -1494,7 +1497,7 @@ function renderAdminPageV2(): string {
       document.getElementById("workspace-project-name").textContent = project ? project.name : "当前项目";
       document.getElementById("selected-project-tag").textContent = project ? project.id : "未选择";
       document.getElementById("workspace-project-meta").textContent = project
-        ? "账号 " + (project.accountCount || 0) + "，可用 " + (itemSummary.available || 0) + "，待处理 " + (itemSummary.actionRequired || 0) + "，API Key " + (project.keyCount || 0)
+        ? "账号 " + (project.accountCount || 0) + "，可用 " + (itemSummary.available || 0) + "，待处理 " + (itemSummary.actionRequired || 0) + "，API Key " + projectKeyCount(project.id)
         : "";
     }
     function renderDashboard() {
@@ -1551,7 +1554,7 @@ function renderAdminPageV2(): string {
       }
       els.keysTable.innerHTML = '<div class="table-wrap"><table><thead><tr><th>凭证名称</th><th>API Key</th><th>访问权限</th><th>操作</th></tr></thead><tbody>' + globalKeys.map((key) => {
         const allowed = Array.isArray(key.projects) ? key.projects.map(p => '<span class="tag">' + escapeHtml(p) + '</span>').join('') : '<span class="tag ok">ALL</span>';
-        return '<tr><td><b>' + escapeHtml(key.name || "未命名") + '</b></td><td><div class="mono">' + escapeHtml(key.id) + '</div></td><td><div class="toolbar">' + allowed + '</div></td><td><div class="actions"><button class="ghost" onclick="copyKey(\\'' + escapeHtml(key.id) + '\\')">复制</button><button class="ghost" onclick="editKey(\\'' + escapeHtml(key.id) + '\\')">编辑</button><button class="danger" onclick="deleteKey(\\'' + escapeHtml(key.id) + '\\')">删除</button></div></td></tr>';
+        return '<tr><td><b>' + escapeHtml(key.name || "未命名") + '</b><div class="muted mono">' + escapeHtml(key.id) + '</div></td><td><div class="mono">' + escapeHtml(key.key) + '</div></td><td><div class="toolbar">' + allowed + '</div></td><td><div class="actions"><button class="ghost" onclick="copyKey(\\'' + escapeHtml(key.key) + '\\')">复制</button><button class="ghost" onclick="editKey(\\'' + escapeHtml(key.id) + '\\')">编辑</button><button class="danger" onclick="deleteKey(\\'' + escapeHtml(key.id) + '\\')">删除</button></div></td></tr>';
       }).join("") + '</tbody></table></div>';
     }
     async function refreshAll() {
@@ -1650,7 +1653,7 @@ function renderAdminPageV2(): string {
       try {
         const id = document.getElementById("project-id").value.trim();
         const existing = !!editingProjectId;
-        let modelMapping = undefined;
+        let modelMapping = {};
         try {
           const rawMap = document.getElementById("project-model-mapping").value.trim();
           if (rawMap) modelMapping = JSON.parse(rawMap);
@@ -1661,7 +1664,7 @@ function renderAdminPageV2(): string {
           name: document.getElementById("project-name").value.trim() || undefined, 
           enabled: document.getElementById("project-enabled").checked,
           modelMapping,
-          disabledModels: disabledModels.length ? disabledModels : undefined
+          disabledModels
         };
         const data = await api(existing ? "/admin/projects/" + encodeURIComponent(editingProjectId) : "/admin/projects", { method: existing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
         selectedProjectId = data.project.id;
@@ -1777,7 +1780,7 @@ function renderAdminPageV2(): string {
         const payload = { name, projects: allowAll ? "ALL" : selected.length ? selected : ["default-rt"] };
         const existing = !!editingKeyId;
         const data = await api(existing ? "/admin/keys/" + encodeURIComponent(editingKeyId) : "/admin/keys", { method: existing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-        if (!existing) await navigator.clipboard.writeText(data.key.id).catch(() => {});
+        if (!existing) await navigator.clipboard.writeText(data.key.key).catch(() => {});
         closeKeyModal();
         await refreshAll();
         status(els.keyStatus, existing ? "凭证已保存。" : "凭证已创建并尝试复制。");
@@ -2337,7 +2340,13 @@ export class RouterState extends DurableObject<Env> {
     if (allowedProjects.length === 0) return json({ error: "No available projects for this key" }, { status: 403 });
 
     if (request.method === "GET" && requestUrl.pathname === "/v1/models") {
-      return json({ object: "list", data: [] });
+      const models = [...new Set(allowedProjects.flatMap((project) => (
+        Object.keys(project.modelMapping ?? {}).filter((model) => !project.disabledModels.includes(model))
+      )))].sort((a, b) => a.localeCompare(b));
+      return json({
+        object: "list",
+        data: models.map((id) => ({ id, object: "model", owned_by: "hyhub" })),
+      });
     }
 
     let requestBody = request.method === "GET" || request.method === "HEAD"
@@ -2839,17 +2848,17 @@ export class RouterState extends DurableObject<Env> {
   }
 
   private async handlePublicStatus(): Promise<Response> {
-    const [projects, accounts, statsMap, healthMap, allModelSettings, modelHourlyStats] = await Promise.all([
+    const [projects, accounts, statsMap, healthMap, modelHourlyStats] = await Promise.all([
       this.getProjects(),
       this.getAccounts(),
       this.getStatsMap(),
       this.getHealthMap(),
-      this.getAllModelSettings(),
       this.getModelHourlyStats(),
     ]);
     const summary = summarizeAccounts(accounts, statsMap, healthMap);
     const hours = lastHourKeys(24);
-    const publicModels = projects.flatMap((project) => (allModelSettings[project.id]?.models ?? []).map((model) => prefixProjectModel(project, model)));
+    const configuredModels = projects.flatMap((project) => Object.keys(project.modelMapping ?? {}));
+    const publicModels = [...new Set([...configuredModels, ...Object.keys(modelHourlyStats)])].sort((a, b) => a.localeCompare(b));
     const modelHealth = publicModels.map((model) => {
       const stats = modelHourlyStats[model] ?? {};
       const buckets = hours.map((key) => {
@@ -2883,7 +2892,7 @@ export class RouterState extends DurableObject<Env> {
       return {
         project: toPublicProject(project, scoped.length),
         summary: summarizeAccounts(scoped, statsMap, healthMap),
-        models: (allModelSettings[project.id]?.models ?? []).map((model) => prefixProjectModel(project, model)),
+        models: Object.keys(project.modelMapping ?? {}).filter((model) => !project.disabledModels.includes(model)),
       };
     });
     const state = summary.enabled === 0 || summary.available === 0
