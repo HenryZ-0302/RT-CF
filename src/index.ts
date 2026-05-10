@@ -68,7 +68,8 @@ type ProjectRecord = {
   id: string;
   name: string;
   enabled: boolean;
-  apiKeys: string[];
+  modelMapping: Record<string, string>;
+  disabledModels: string[];
   createdAt: number;
   updatedAt: number;
 };
@@ -77,29 +78,42 @@ type ProjectInput = {
   id?: string;
   name?: string;
   enabled?: boolean;
+  modelMapping?: Record<string, string>;
+  disabledModels?: string[];
 };
 
 type PublicProject = {
   id: string;
   name: string;
   enabled: boolean;
-  apiKeys: string[];
-  keyCount: number;
+  modelMapping: Record<string, string>;
+  disabledModels: string[];
   accountCount: number;
   createdAt: number;
   updatedAt: number;
 };
 
+type ApiKeyRecord = {
+  id: string;
+  key: string;
+  name: string;
+  projects: string[] | "ALL";
+  createdAt: number;
+  updatedAt: number;
+};
+
+type ApiKeyInput = {
+  id?: string;
+  name?: string;
+  projects?: string[] | "ALL";
+};
+
+type PublicApiKey = ApiKeyRecord;
+
 type RoutingSettings = {
   maxRetryAccounts: number;
   disableOnFailure: boolean;
 };
-
-type ModelSettings = {
-  models: string[];
-};
-
-type ProjectModelSettings = Record<string, ModelSettings>;
 
 type ModelHourlyBucket = {
   calls: number;
@@ -113,11 +127,11 @@ type ModelHourlyBucket = {
 type ModelHourlyStats = Record<string, Record<string, ModelHourlyBucket>>;
 
 const ACCOUNTS_KEY = "accounts";
+const KEYS_KEY = "api_keys";
 const CURSOR_KEY = "cursor";
 const STATS_KEY = "stats";
 const HEALTH_KEY = "health";
 const ROUTING_KEY = "routing";
-const MODELS_KEY = "models";
 const MODEL_HOURLY_KEY = "model_hourly";
 const PROJECTS_KEY = "projects";
 const DEFAULT_PROJECT_ID = "default-rt";
@@ -154,32 +168,19 @@ function normalizeModelList(value: unknown): string[] {
   return models.slice(0, 100);
 }
 
-function normalizeProjectModelMap(value: unknown): ProjectModelSettings {
-  const saved = value && typeof value === "object" ? value as Record<string, unknown> : {};
-  if (Array.isArray((saved as Partial<ModelSettings>).models)) {
-    return { [DEFAULT_PROJECT_ID]: { models: normalizeModelList((saved as Partial<ModelSettings>).models) } };
+function normalizeModelMapping(value: unknown): Record<string, string> {
+  const incoming = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const mapping: Record<string, string> = {};
+  for (const [k, v] of Object.entries(incoming)) {
+    const key = k.trim();
+    const val = String(v ?? "").trim();
+    if (key && val) mapping[key] = val;
   }
-  const next: ProjectModelSettings = {};
-  for (const [projectId, settings] of Object.entries(saved)) {
-    if (!projectId.trim()) continue;
-    next[projectId] = { models: normalizeModelList((settings as Partial<ModelSettings> | undefined)?.models) };
-  }
-  return next;
+  return mapping;
 }
 
-function prefixProjectModel(project: ProjectRecord, model: string): string {
-  return `${project.id}/${model}`;
-}
-
-function parseProjectModel(project: ProjectRecord, model: string): { upstreamModel: string; publicModel: string; prefixed: boolean } {
-  const raw = model.trim();
-  const prefixes = [`${project.id}/`, `${project.name}/`];
-  const matched = prefixes.find((prefix) => raw.startsWith(prefix));
-  if (!matched) {
-    return { upstreamModel: raw, publicModel: raw ? prefixProjectModel(project, raw) : "", prefixed: false };
-  }
-  const upstreamModel = raw.slice(matched.length).trim();
-  return { upstreamModel, publicModel: upstreamModel ? prefixProjectModel(project, upstreamModel) : "", prefixed: true };
+function normalizeDisabledModels(value: unknown): string[] {
+  return normalizeModelList(value);
 }
 
 function createEmptyModelBucket(): ModelHourlyBucket {
@@ -280,10 +281,26 @@ function generateProjectId(): string {
   return `proj-${Math.floor(100000000 + Math.random() * 900000000)}`;
 }
 
-function generateProjectApiKey(): string {
+function generateApiKeyId(): string {
+  return `key-${Math.floor(100000000 + Math.random() * 900000000)}`;
+}
+
+function generateApiKey(): string {
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
   return `hy_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function sanitizeApiKeyInput(payload: ApiKeyInput, existing?: ApiKeyRecord): ApiKeyRecord {
+  const now = Date.now();
+  return {
+    id: payload.id?.trim() || existing?.id || generateApiKeyId(),
+    key: existing?.key || generateApiKey(),
+    name: payload.name?.trim() || existing?.name || "新 API 密钥",
+    projects: payload.projects === "ALL" ? "ALL" : Array.isArray(payload.projects) ? payload.projects : existing?.projects ?? [DEFAULT_PROJECT_ID],
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
 }
 
 function sanitizeProjectInput(payload: ProjectInput, existing?: ProjectRecord): ProjectRecord {
@@ -293,7 +310,8 @@ function sanitizeProjectInput(payload: ProjectInput, existing?: ProjectRecord): 
     id,
     name: payload.name?.trim() || existing?.name || id,
     enabled: payload.enabled ?? existing?.enabled ?? true,
-    apiKeys: existing?.apiKeys ?? [],
+    modelMapping: payload.modelMapping ?? existing?.modelMapping ?? {},
+    disabledModels: payload.disabledModels ?? existing?.disabledModels ?? [],
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -305,7 +323,8 @@ function createDefaultProject(existing?: Partial<ProjectRecord>): ProjectRecord 
     id: DEFAULT_PROJECT_ID,
     name: existing?.name?.trim() || DEFAULT_PROJECT_NAME,
     enabled: existing?.enabled ?? true,
-    apiKeys: Array.isArray(existing?.apiKeys) ? existing.apiKeys : [],
+    modelMapping: existing?.modelMapping ?? {},
+    disabledModels: existing?.disabledModels ?? [],
     createdAt: existing?.createdAt ?? now,
     updatedAt: existing?.updatedAt ?? now,
   };
@@ -316,8 +335,8 @@ function toPublicProject(project: ProjectRecord, accountCount = 0): PublicProjec
     id: project.id,
     name: project.name,
     enabled: project.enabled,
-    apiKeys: project.apiKeys,
-    keyCount: project.apiKeys.length,
+    modelMapping: project.modelMapping,
+    disabledModels: project.disabledModels,
     accountCount,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
@@ -2497,6 +2516,7 @@ function renderAdminPageV2(): string {
       <nav>
         <button class="nav-btn active" data-page="dashboard">仪表盘</button>
         <button class="nav-btn" data-page="projects">项目</button>
+        <button class="nav-btn" data-page="keys">密钥</button>
         <button class="nav-btn" data-page="settings">设置</button>
       </nav>
       <div class="side-section">
@@ -2564,19 +2584,25 @@ function renderAdminPageV2(): string {
         </section>
       </section>
 
-      <section id="page-settings" class="page">
-        <div class="grid two">
-          <section class="panel">
-            <h3>项目 API Key</h3>
-            <p class="muted">客户端使用 Base URL 加项目 API Key 调用 /v1/*。AUTH_TOKEN 只用于管理员登录。</p>
-            <div class="tag" id="settings-project-label">当前项目</div>
+      <section id="page-keys" class="page">
+        <section class="panel">
+          <div class="row">
+            <div>
+              <h3>全局 API Key 管理</h3>
+              <p class="muted" style="margin-top:4px">创建并管理全局 API Key，可分配允许访问的项目。</p>
+            </div>
             <div class="actions">
               <button id="create-key">创建 API Key</button>
               <button id="copy-base-url" class="secondary">复制 Base URL</button>
             </div>
-            <div id="project-keys" class="list" style="margin-top:12px"></div>
-            <div class="status" id="key-status"></div>
-          </section>
+          </div>
+          <div class="status" id="key-status" style="margin-top:12px"></div>
+          <div id="keys-table" style="margin-top:12px"></div>
+        </section>
+      </section>
+
+      <section id="page-settings" class="page">
+        <div class="grid two">
           <section class="panel">
             <h3>路由策略</h3>
             <div class="grid two" style="margin-top:12px">
@@ -2587,15 +2613,6 @@ function renderAdminPageV2(): string {
             <div class="status" id="routing-status"></div>
           </section>
           <section class="panel">
-            <h3>开放模型</h3>
-            <p class="muted">模型跟随侧边栏当前项目。客户端使用 项目ID/模型名，例如 example/gpt-5.5。</p>
-            <div id="enabled-models-summary" class="muted" style="margin-top:10px"></div>
-            <div class="actions">
-              <button id="open-model-manager">管理开放模型</button>
-            </div>
-            <div class="status" id="model-status"></div>
-          </section>
-          <section class="panel">
             <h3>导入 / 导出 / 统计</h3>
             <p class="muted">导入导出作用于侧边栏当前项目账号池；清空统计只清真实 API 调用统计。</p>
             <div class="actions">
@@ -2603,25 +2620,35 @@ function renderAdminPageV2(): string {
             </div>
             <div class="status" id="ops-status"></div>
           </section>
+          <section class="panel">
+            <h3>系统设置</h3>
+            <div class="grid two" style="margin-top:12px">
+              <input id="api-test-model" placeholder="API 检测模型，默认 gpt-4.1-mini" />
+            </div>
+          </section>
         </div>
       </section>
     </main>
   </section>
 
   <div id="project-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
-    <div class="modal">
+    <div class="modal wide">
       <div class="modal-head">
         <div>
           <h3 id="project-modal-title">新建项目</h3>
-          <p class="muted" id="project-modal-desc" style="margin:6px 0 0">项目会成为全局工作区，账号池、API Key 和模型都跟随项目切换。</p>
+          <p class="muted" id="project-modal-desc" style="margin:6px 0 0">项目拥有独立的账号池和模型配置。</p>
         </div>
         <button id="close-project-modal" class="ghost icon-btn" aria-label="关闭">×</button>
       </div>
       <div class="grid two">
-        <input id="project-id" placeholder="项目 ID，例如 example" />
+        <input id="project-id" placeholder="项目 ID，例如 default-rt" />
         <input id="project-name" placeholder="项目名称" />
       </div>
       <label class="toolbar"><input id="project-enabled" type="checkbox" checked /> 启用项目</label>
+      <div class="grid two">
+        <textarea id="project-model-mapping" placeholder='模型映射 (JSON)，例如: {"gpt-4": "gpt-4-0613"}'></textarea>
+        <textarea id="project-disabled-models" placeholder="禁用的模型列表，一行一个"></textarea>
+      </div>
       <div class="actions">
         <button id="save-project">保存项目</button>
         <button id="cancel-project-modal" class="ghost">取消</button>
@@ -2654,29 +2681,24 @@ function renderAdminPageV2(): string {
     </div>
   </div>
 
-  <div id="model-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
-    <div class="modal wide">
+  <div id="key-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal">
       <div class="modal-head">
         <div>
-          <h3>开放模型</h3>
-          <p class="muted" style="margin:6px 0 0">从当前项目账号池拉取模型，勾选后保存。对外模型名会自动加项目前缀。</p>
+          <h3 id="key-modal-title">API Key 设置</h3>
         </div>
-        <button id="close-model-modal" class="ghost icon-btn" aria-label="关闭">×</button>
+        <button id="close-key-modal" class="ghost icon-btn" aria-label="关闭">×</button>
       </div>
-      <textarea id="open-models" class="hidden" placeholder="一行一个模型"></textarea>
-      <div class="grid two">
-        <input id="model-discovery-limit" type="number" min="1" max="50" step="1" value="8" placeholder="扫描账号数" />
-        <input id="api-test-model" placeholder="账号检测模型，默认 gpt-4.1-mini" />
+      <div class="grid">
+        <input id="key-name" placeholder="凭证名称" />
+        <select id="key-projects" multiple style="height: 120px;">
+          <option value="ALL">所有项目 (ALL)</option>
+        </select>
+        <p class="muted">按住 Ctrl/Cmd 多选项目。包含 "所有项目 (ALL)" 则允许访问所有项目。</p>
       </div>
       <div class="actions">
-        <button id="discover-models" class="secondary">从账号池拉取模型</button>
-        <button id="save-models">保存开放模型</button>
+        <button id="save-key">保存</button>
       </div>
-      <div id="discovered-models" class="model-grid"></div>
-      <details class="advanced-models">
-        <summary>高级：手动编辑模型列表</summary>
-        <textarea id="open-models-advanced" placeholder="一行一个模型，例如 gpt-5.5"></textarea>
-      </details>
     </div>
   </div>
 
@@ -2717,20 +2739,20 @@ function renderAdminPageV2(): string {
       accountStatus: document.getElementById("account-status"),
       accountsTable: document.getElementById("accounts-table"),
       settingsProjectLabel: document.getElementById("settings-project-label"),
-      projectKeys: document.getElementById("project-keys"),
+      keysTable: document.getElementById("keys-table"),
       keyStatus: document.getElementById("key-status"),
       routingStatus: document.getElementById("routing-status"),
-      modelStatus: document.getElementById("model-status"),
       opsStatus: document.getElementById("ops-status"),
       projectModal: document.getElementById("project-modal"),
       accountModal: document.getElementById("account-modal"),
-      modelModal: document.getElementById("model-modal"),
+      keyModal: document.getElementById("key-modal"),
       opsModal: document.getElementById("ops-modal"),
     };
     const pageMeta = {
       dashboard: ["仪表盘", "查看整体项目、账号池和调用健康。"],
       projects: ["项目", "切换项目并管理这个项目自己的上游账号池。"],
-      settings: ["设置", "管理项目 API Key、路由策略、模型和导入导出。"],
+      keys: ["密钥", "管理全局 API 凭证及访问权限。"],
+      settings: ["设置", "管理全局路由策略与系统设置。"],
     };
     let projects = [];
     let accounts = [];
@@ -2739,6 +2761,8 @@ function renderAdminPageV2(): string {
     let publicStatus = {};
     let currentModels = [];
     let discoveredModels = [];
+    let globalKeys = [];
+    let editingKeyId = null;
     let editingProjectId = null;
     let selectedProjectId = localStorage.getItem("hyhub-selected-project") || "default-rt";
     let selectedAccountIds = new Set();
@@ -2857,12 +2881,14 @@ function renderAdminPageV2(): string {
       }));
     }
     function renderKeys() {
-      const project = selectedProject();
-      if (!project) {
-        els.projectKeys.innerHTML = '<div class="empty">先创建项目。</div>';
+      if (!globalKeys.length) {
+        els.keysTable.innerHTML = '<div class="empty">当前还没有全局 API Key。</div>';
         return;
       }
-      els.projectKeys.innerHTML = project.apiKeys?.length ? project.apiKeys.map((key) => '<div class="key-row"><span class="mono">' + escapeHtml(key) + '</span><button class="ghost" onclick="copyKey(\\'' + escapeHtml(key) + '\\')">复制</button><button class="danger" onclick="deleteKey(\\'' + escapeHtml(key) + '\\')">删除</button></div>').join("") : '<div class="empty">当前项目还没有 API Key。</div>';
+      els.keysTable.innerHTML = '<div class="table-wrap"><table><thead><tr><th>凭证名称</th><th>API Key</th><th>访问权限</th><th>操作</th></tr></thead><tbody>' + globalKeys.map((key) => {
+        const allowed = Array.isArray(key.projects) ? key.projects.map(p => '<span class="tag">' + escapeHtml(p) + '</span>').join('') : '<span class="tag ok">ALL</span>';
+        return '<tr><td><b>' + escapeHtml(key.name || "未命名") + '</b></td><td><div class="mono">' + escapeHtml(key.id) + '</div></td><td><div class="toolbar">' + allowed + '</div></td><td><div class="actions"><button class="ghost" onclick="copyKey(\\'' + escapeHtml(key.id) + '\\')">复制</button><button class="ghost" onclick="editKey(\\'' + escapeHtml(key.id) + '\\')">编辑</button><button class="danger" onclick="deleteKey(\\'' + escapeHtml(key.id) + '\\')">删除</button></div></td></tr>';
+      }).join("") + '</tbody></table></div>';
     }
     async function refreshAll() {
       const verify = await api("/admin/verify");
@@ -2871,10 +2897,15 @@ function renderAdminPageV2(): string {
       projectStats = verify.projectStats || [];
       if (!projects.some((project) => project.id === selectedProjectId)) selectedProjectId = projects[0]?.id || "default-rt";
       await loadProjectAccounts();
-      await Promise.all([loadRouting(), loadModels(), loadPublicStatus()]);
+      await Promise.all([loadRouting(), loadPublicStatus(), loadKeys()]);
       renderDashboard();
       renderProjects();
       renderAccounts();
+      renderKeys();
+    }
+    async function loadKeys() {
+      const data = await api("/admin/keys");
+      globalKeys = data.keys || [];
     }
     async function loadProjectAccounts() {
       if (!selectedProjectId) return;
@@ -2888,17 +2919,6 @@ function renderAdminPageV2(): string {
       const data = await api("/admin/routing");
       document.getElementById("max-retry-accounts").value = data.routing?.maxRetryAccounts || 3;
       document.getElementById("disable-on-failure").checked = data.routing?.disableOnFailure === true;
-    }
-    async function loadModels() {
-      if (!selectedProjectId) return;
-      const data = await api(projectPath("/models"));
-      currentModels = data.models || [];
-      discoveredModels = [];
-      document.getElementById("open-models").value = currentModels.join("\\n");
-      document.getElementById("open-models-advanced").value = currentModels.join("\\n");
-      const project = selectedProject();
-      document.getElementById("api-test-model").placeholder = project ? "账号检测模型，例如 " + project.id + "/gpt-5.5" : "账号检测模型";
-      renderModelPicker();
     }
     async function verifyLogin() {
       try {
@@ -2919,20 +2939,20 @@ function renderAdminPageV2(): string {
       selectedProjectId = id;
       localStorage.setItem("hyhub-selected-project", id);
       await loadProjectAccounts();
-      await loadModels();
       renderProjects();
       renderAccounts();
-      renderModelPicker();
       if (goProjects) setPage("projects");
     };
     function openProjectModal(project) {
       editingProjectId = project?.id || null;
       document.getElementById("project-modal-title").textContent = project ? "编辑项目" : "新建项目";
-      document.getElementById("project-modal-desc").textContent = project ? "修改当前项目名称和启用状态；项目 ID 作为模型前缀保持不变。" : "项目会成为全局工作区，账号池、API Key 和模型都跟随项目切换。";
+      document.getElementById("project-modal-desc").textContent = project ? "修改当前项目名称和启用状态；项目 ID 作为模型前缀保持不变。" : "项目拥有独立的账号池和模型配置。";
       document.getElementById("project-id").value = project?.id || "";
       document.getElementById("project-id").disabled = !!project;
       document.getElementById("project-name").value = project?.name || "";
       document.getElementById("project-enabled").checked = project?.enabled !== false;
+      document.getElementById("project-model-mapping").value = project?.modelMapping ? JSON.stringify(project.modelMapping, null, 2) : "";
+      document.getElementById("project-disabled-models").value = project?.disabledModels?.length ? project.disabledModels.join("\n") : "";
       els.projectModal.classList.remove("hidden");
     }
     function closeProjectModal() {
@@ -2956,13 +2976,6 @@ function renderAdminPageV2(): string {
     function closeAccountModal() {
       els.accountModal.classList.add("hidden");
     }
-    function openModelModal() {
-      renderModelPicker();
-      els.modelModal.classList.remove("hidden");
-    }
-    function closeModelModal() {
-      els.modelModal.classList.add("hidden");
-    }
     function openOpsModal() {
       els.opsModal.classList.remove("hidden");
     }
@@ -2973,7 +2986,19 @@ function renderAdminPageV2(): string {
       try {
         const id = document.getElementById("project-id").value.trim();
         const existing = !!editingProjectId;
-        const payload = { id: existing ? undefined : id || undefined, name: document.getElementById("project-name").value.trim() || undefined, enabled: document.getElementById("project-enabled").checked };
+        let modelMapping = undefined;
+        try {
+          const rawMap = document.getElementById("project-model-mapping").value.trim();
+          if (rawMap) modelMapping = JSON.parse(rawMap);
+        } catch(e) { throw new Error("模型映射 JSON 格式错误"); }
+        const disabledModels = document.getElementById("project-disabled-models").value.split(/[\n,]+/).map(m => m.trim()).filter(Boolean);
+        const payload = { 
+          id: existing ? undefined : id || undefined, 
+          name: document.getElementById("project-name").value.trim() || undefined, 
+          enabled: document.getElementById("project-enabled").checked,
+          modelMapping,
+          disabledModels: disabledModels.length ? disabledModels : undefined
+        };
         const data = await api(existing ? "/admin/projects/" + encodeURIComponent(editingProjectId) : "/admin/projects", { method: existing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
         selectedProjectId = data.project.id;
         closeProjectModal();
@@ -3056,68 +3081,51 @@ function renderAdminPageV2(): string {
       selectedAccountIds.clear();
       await refreshAll();
     }
-    async function createKey() {
-      try {
-        const data = await api("/admin/projects/" + encodeURIComponent(selectedProjectId) + "/keys", { method: "POST" });
-        await navigator.clipboard.writeText(data.key).catch(() => {});
-        await refreshAll();
-        status(els.keyStatus, "API Key 已创建并尝试复制。");
-      } catch (error) { status(els.keyStatus, error.message, true); }
-    }
     window.copyKey = async function(key) { await navigator.clipboard.writeText(key); status(els.keyStatus, "API Key 已复制。"); };
     window.deleteKey = async function(key) {
       if (!confirm("确认删除这个 API Key？")) return;
-      await api("/admin/projects/" + encodeURIComponent(selectedProjectId) + "/keys/" + encodeURIComponent(key), { method: "DELETE" });
+      await api("/admin/keys/" + encodeURIComponent(key), { method: "DELETE" });
       await refreshAll();
     };
+    function openKeyModal(keyRecord) {
+      editingKeyId = keyRecord?.id || null;
+      document.getElementById("key-modal-title").textContent = keyRecord ? "编辑凭证" : "创建新凭证";
+      document.getElementById("key-name").value = keyRecord?.name || "";
+      const select = document.getElementById("key-projects");
+      select.innerHTML = '<option value="ALL">所有项目 (ALL)</option>' + projects.map(p => '<option value="' + escapeHtml(p.id) + '">' + escapeHtml(p.name || p.id) + '</option>').join('');
+      const allowed = keyRecord ? keyRecord.projects : "ALL";
+      for (const option of select.options) {
+        if (allowed === "ALL") option.selected = option.value === "ALL";
+        else option.selected = allowed.includes(option.value);
+      }
+      els.keyModal.classList.remove("hidden");
+    }
+    function closeKeyModal() {
+      editingKeyId = null;
+      els.keyModal.classList.add("hidden");
+    }
+    async function saveKey() {
+      try {
+        const name = document.getElementById("key-name").value.trim() || "未命名";
+        const select = document.getElementById("key-projects");
+        const selected = [...select.options].filter(o => o.selected).map(o => o.value);
+        const allowAll = selected.includes("ALL");
+        const payload = { name, projects: allowAll ? "ALL" : selected.length ? selected : ["default-rt"] };
+        const existing = !!editingKeyId;
+        const data = await api(existing ? "/admin/keys/" + encodeURIComponent(editingKeyId) : "/admin/keys", { method: existing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+        if (!existing) await navigator.clipboard.writeText(data.key.id).catch(() => {});
+        closeKeyModal();
+        await refreshAll();
+        status(els.keyStatus, existing ? "凭证已保存。" : "凭证已创建并尝试复制。");
+      } catch (error) { status(els.keyStatus, error.message, true); }
+    }
+    window.editKey = function(id) { openKeyModal(globalKeys.find(k => k.id === id)); };
     async function saveRouting() {
       try {
         await api("/admin/routing", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ maxRetryAccounts: Number(document.getElementById("max-retry-accounts").value || 3), disableOnFailure: document.getElementById("disable-on-failure").checked }) });
         status(els.routingStatus, "路由策略已保存。");
       } catch (error) { status(els.routingStatus, error.message, true); }
     }
-    async function saveModels() {
-      try {
-        const boxes = [...document.querySelectorAll("[data-model-check]")];
-        const checked = boxes.filter((input) => input.checked).map((input) => input.getAttribute("data-model-check"));
-        const manual = document.getElementById("open-models-advanced").value.split(/[\\n,]+/).map((item) => item.trim()).filter(Boolean);
-        const models = boxes.length ? checked : manual;
-        await api(projectPath("/models"), { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ models }) });
-        currentModels = models;
-        document.getElementById("open-models").value = models.join("\\n");
-        document.getElementById("open-models-advanced").value = models.join("\\n");
-        renderModelPicker();
-        closeModelModal();
-        status(els.modelStatus, "开放模型已保存。");
-      } catch (error) { status(els.modelStatus, error.message, true); }
-    }
-    function renderModelPicker() {
-      const models = discoveredModels.length ? discoveredModels : currentModels.map((model) => ({ model, publicModel: (selectedProject()?.id || selectedProjectId) + "/" + model, accounts: [] }));
-      document.getElementById("enabled-models-summary").textContent = currentModels.length
-        ? "已开放 " + currentModels.length + " 个模型。客户端使用 " + (selectedProject()?.id || selectedProjectId) + "/模型名 调用。"
-        : "当前项目还没有开放模型。先从账号池拉取，然后勾选保存。";
-      document.getElementById("discovered-models").innerHTML = models.length ? models.map((item) => {
-        const checked = currentModels.includes(item.model) ? "checked" : "";
-        const accountText = item.accounts?.length ? item.accounts.length + " 个账号返回" : "已保存";
-        return '<label class="model-option"><input type="checkbox" data-model-check="' + escapeHtml(item.model) + '" ' + checked + ' /><span><b class="mono">' + escapeHtml(item.publicModel || ((selectedProject()?.id || selectedProjectId) + "/" + item.model)) + '</b><span class="muted" style="display:block">' + accountText + '</span></span></label>';
-      }).join("") : '<div class="empty">还没有模型候选。点击“从账号池拉取模型”。</div>';
-    }
-    async function discoverModels() {
-      try {
-        const limit = Number(document.getElementById("model-discovery-limit").value || 8);
-        const data = await api(projectPath("/models/discover"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ limit }) });
-        discoveredModels = data.recommendations || [];
-        renderModelPicker();
-        status(els.modelStatus, "拉取完成。勾选要开放的模型后保存。");
-      } catch (error) { status(els.modelStatus, error.message, true); }
-    }
-    window.addModel = function(model) {
-      const input = document.getElementById("open-models");
-      const items = new Set(input.value.split(/[\\n,]+/).map((item) => item.trim()).filter(Boolean));
-      items.add(model);
-      input.value = [...items].join("\\n");
-      document.getElementById("open-models-advanced").value = input.value;
-    };
     async function exportAccounts() {
       const data = await api(projectPath("/accounts/export"));
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -3171,23 +3179,21 @@ function renderAdminPageV2(): string {
     document.getElementById("close-account-modal").addEventListener("click", closeAccountModal);
     document.getElementById("cancel-account-modal").addEventListener("click", closeAccountModal);
     els.accountModal.addEventListener("click", (event) => { if (event.target === els.accountModal) closeAccountModal(); });
-    document.getElementById("open-model-manager").addEventListener("click", openModelModal);
-    document.getElementById("close-model-modal").addEventListener("click", closeModelModal);
-    els.modelModal.addEventListener("click", (event) => { if (event.target === els.modelModal) closeModelModal(); });
     document.getElementById("open-ops-modal").addEventListener("click", openOpsModal);
     document.getElementById("close-ops-modal").addEventListener("click", closeOpsModal);
     els.opsModal.addEventListener("click", (event) => { if (event.target === els.opsModal) closeOpsModal(); });
-    document.addEventListener("keydown", (event) => { if (event.key === "Escape") { closeProjectModal(); closeAccountModal(); closeModelModal(); closeOpsModal(); } });
+    document.getElementById("close-key-modal").addEventListener("click", closeKeyModal);
+    els.keyModal.addEventListener("click", (event) => { if (event.target === els.keyModal) closeKeyModal(); });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") { closeProjectModal(); closeAccountModal(); closeKeyModal(); closeOpsModal(); } });
     document.getElementById("save-project").addEventListener("click", saveProject);
     document.getElementById("save-account").addEventListener("click", saveAccount);
+    document.getElementById("save-key").addEventListener("click", saveKey);
     document.getElementById("test-project-accounts").addEventListener("click", async () => { const data = await api(projectPath("/accounts/test-all"), { method: "POST" }); status(els.accountStatus, "检测完成：" + (data.okCount || 0) + "/" + (data.total || 0) + " 可用。"); await refreshAll(); });
     document.getElementById("batch-enable").addEventListener("click", () => batchToggle(true));
     document.getElementById("batch-disable").addEventListener("click", () => batchToggle(false));
-    document.getElementById("create-key").addEventListener("click", createKey);
+    document.getElementById("create-key").addEventListener("click", () => openKeyModal(null));
     document.getElementById("copy-base-url").addEventListener("click", async () => { await navigator.clipboard.writeText(window.location.origin + "/v1"); status(els.keyStatus, "Base URL 已复制。"); });
     document.getElementById("save-routing").addEventListener("click", saveRouting);
-    document.getElementById("save-models").addEventListener("click", saveModels);
-    document.getElementById("discover-models").addEventListener("click", discoverModels);
     document.getElementById("export-accounts").addEventListener("click", exportAccounts);
     document.getElementById("import-accounts").addEventListener("click", importAccounts);
     document.getElementById("reset-stats").addEventListener("click", resetStats);
@@ -3228,7 +3234,7 @@ export class RouterState extends DurableObject<Env> {
   private statsCache: Record<string, AccountStat> | null = null;
   private healthCache: Record<string, AccountHealth> | null = null;
   private routingCache: RoutingSettings | null = null;
-  private modelsCache: ProjectModelSettings | null = null;
+  private apiKeysCache: ApiKeyRecord[] | null = null;
   private modelHourlyCache: ModelHourlyStats | null = null;
   private projectsCache: ProjectRecord[] | null = null;
 
@@ -3251,13 +3257,14 @@ export class RouterState extends DurableObject<Env> {
 
   private async getProjects(): Promise<ProjectRecord[]> {
     if (this.projectsCache) return this.projectsCache;
-    const saved = await this.ctx.storage.get<Array<ProjectRecord & { accountIds?: string[] }>>(PROJECTS_KEY);
+    const saved = await this.ctx.storage.get<Array<ProjectRecord & { accountIds?: string[], apiKeys?: string[] }>>(PROJECTS_KEY);
     let projects = Array.isArray(saved)
       ? saved.map((project) => ({
         id: project.id,
         name: project.name,
         enabled: project.enabled !== false,
-        apiKeys: Array.isArray(project.apiKeys) ? project.apiKeys : [],
+        modelMapping: project.modelMapping ?? {},
+        disabledModels: project.disabledModels ?? [],
         createdAt: project.createdAt ?? Date.now(),
         updatedAt: project.updatedAt ?? Date.now(),
       }))
@@ -3269,7 +3276,13 @@ export class RouterState extends DurableObject<Env> {
       projects = [createDefaultProject(), ...projects];
     }
     this.projectsCache = projects;
-    if (!Array.isArray(saved) || !saved.some((project) => project.id === DEFAULT_PROJECT_ID) || saved.some((project) => "accountIds" in project)) {
+    
+    const oldModels = await this.ctx.storage.get<unknown>("models");
+    if (oldModels) {
+      await this.ctx.storage.delete("models");
+    }
+
+    if (!Array.isArray(saved) || !saved.some((project) => project.id === DEFAULT_PROJECT_ID) || saved.some((project) => "accountIds" in project || "apiKeys" in project)) {
       await this.ctx.storage.put(PROJECTS_KEY, projects);
     }
     return this.projectsCache;
@@ -3280,10 +3293,45 @@ export class RouterState extends DurableObject<Env> {
     await this.ctx.storage.put(PROJECTS_KEY, projects);
   }
 
-  private async findProjectByApiKey(apiKey: string): Promise<ProjectRecord | null> {
+  private async getApiKeys(): Promise<ApiKeyRecord[]> {
+    if (this.apiKeysCache) return this.apiKeysCache;
+    const savedKeys = await this.ctx.storage.get<ApiKeyRecord[]>(KEYS_KEY);
+    if (Array.isArray(savedKeys)) {
+      this.apiKeysCache = savedKeys;
+      return this.apiKeysCache;
+    }
+    const savedProjects = await this.ctx.storage.get<Array<{ id: string; apiKeys?: string[] }>>(PROJECTS_KEY);
+    const keys: ApiKeyRecord[] = [];
+    if (Array.isArray(savedProjects)) {
+      for (const project of savedProjects) {
+        if (Array.isArray(project.apiKeys)) {
+          for (const keyString of project.apiKeys) {
+            keys.push({
+              id: generateApiKeyId(),
+              key: keyString,
+              name: `迁移密钥 (${project.id})`,
+              projects: [project.id],
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            });
+          }
+        }
+      }
+    }
+    this.apiKeysCache = keys;
+    await this.ctx.storage.put(KEYS_KEY, keys);
+    return this.apiKeysCache;
+  }
+
+  private async saveApiKeys(keys: ApiKeyRecord[]): Promise<void> {
+    this.apiKeysCache = keys;
+    await this.ctx.storage.put(KEYS_KEY, keys);
+  }
+
+  private async getApiKey(apiKey: string): Promise<ApiKeyRecord | null> {
     if (!apiKey.trim()) return null;
-    const projects = await this.getProjects();
-    return projects.find((project) => project.enabled && project.apiKeys.includes(apiKey)) ?? null;
+    const keys = await this.getApiKeys();
+    return keys.find((k) => k.key === apiKey) ?? null;
   }
 
   private async getProjectOrNotFound(projectId: string): Promise<ProjectRecord | Response> {
@@ -3336,27 +3384,7 @@ export class RouterState extends DurableObject<Env> {
     await this.ctx.storage.put(ROUTING_KEY, this.routingCache);
   }
 
-  private async getAllModelSettings(): Promise<ProjectModelSettings> {
-    if (this.modelsCache) return this.modelsCache;
-    const saved = await this.ctx.storage.get<unknown>(MODELS_KEY);
-    this.modelsCache = normalizeProjectModelMap(saved);
-    if (saved && typeof saved === "object" && Array.isArray((saved as Partial<ModelSettings>).models)) {
-      await this.ctx.storage.put(MODELS_KEY, this.modelsCache);
-    }
-    return this.modelsCache;
-  }
 
-  private async getProjectModelSettings(projectId: string): Promise<ModelSettings> {
-    const settings = await this.getAllModelSettings();
-    return settings[projectId] ?? { models: [] };
-  }
-
-  private async saveProjectModelSettings(projectId: string, settings: ModelSettings): Promise<void> {
-    const all = await this.getAllModelSettings();
-    all[projectId] = { models: normalizeModelList(settings.models) };
-    this.modelsCache = all;
-    await this.ctx.storage.put(MODELS_KEY, all);
-  }
 
   private async getModelHourlyStats(): Promise<ModelHourlyStats> {
     if (this.modelHourlyCache) return this.modelHourlyCache;
@@ -3600,18 +3628,17 @@ export class RouterState extends DurableObject<Env> {
     return account;
   }
 
-  private async pickProjectAccount(projectId: string, excluded: Set<string> = new Set()): Promise<AccountRecord | null> {
-    const accounts = await this.getAccounts();
+  private async pickCandidateAccount(candidates: { account: AccountRecord; project: ProjectRecord; upstreamModel: string }[], excluded: Set<string> = new Set()): Promise<{ account: AccountRecord; project: ProjectRecord; upstreamModel: string } | null> {
     const now = Date.now();
-    const enabled = accounts.filter((item) => item.projectId === projectId && item.enabled && !excluded.has(item.id));
-    const healthy = enabled.filter((item) => (item.unhealthyUntil ?? 0) <= now);
+    const enabled = candidates.filter((item) => item.account.enabled && !excluded.has(item.account.id));
+    const healthy = enabled.filter((item) => (item.account.unhealthyUntil ?? 0) <= now);
     const pool = healthy.length > 0 ? healthy : enabled;
     if (pool.length === 0) return null;
-    const weightedPool = pool.flatMap((account) => Array.from({ length: normalizeWeight(account.weight) }, () => account));
+    const weightedPool = pool.flatMap((item) => Array.from({ length: normalizeWeight(item.account.weight) }, () => item));
     const cursor = await this.getCursor();
-    const account = weightedPool[cursor % weightedPool.length];
+    const picked = weightedPool[cursor % weightedPool.length];
     await this.setCursor(cursor + 1);
-    return account;
+    return picked;
   }
 
   private buildUpstreamUrl(account: AccountRecord, requestUrl: URL): string {
@@ -3629,66 +3656,82 @@ export class RouterState extends DurableObject<Env> {
   }
 
   private async proxyRequest(request: Request): Promise<Response> {
-    const project = await this.findProjectByApiKey(getBearer(request));
-    if (!project) return json({ error: "Invalid project API key" }, { status: 401 });
+    const apiKey = await this.getApiKey(getBearer(request));
+    if (!apiKey) return json({ error: "Invalid API key" }, { status: 401 });
+    
     const requestUrl = new URL(request.url);
     if (!requestUrl.pathname.startsWith("/v1/")) {
       return json({ error: "Only /v1/* routes are supported" }, { status: 404 });
     }
-    const modelSettings = await this.getProjectModelSettings(project.id);
+
+    const allProjects = await this.getProjects();
+    const allowedProjects = apiKey.projects === "ALL" 
+      ? allProjects.filter(p => p.enabled)
+      : allProjects.filter(p => p.enabled && apiKey.projects.includes(p.id));
+    
+    if (allowedProjects.length === 0) return json({ error: "No available projects for this key" }, { status: 403 });
+
     if (request.method === "GET" && requestUrl.pathname === "/v1/models") {
-      return json({
-        object: "list",
-        data: modelSettings.models.map((model) => ({ id: prefixProjectModel(project, model), object: "model", owned_by: project.id })),
-      });
+      return json({ object: "list", data: [] });
     }
+
     let requestBody = request.method === "GET" || request.method === "HEAD"
       ? undefined
       : await request.arrayBuffer();
-    let requestedModel: string | null = null;
-    let upstreamModel: string | null = null;
-    let requestBodyRewritten = false;
+
+    let clientModel = "";
+    let payload: { model?: string; [key: string]: unknown } | null = null;
     const modelRequestPaths = new Set(["/v1/chat/completions", "/v1/responses", "/v1/embeddings"]);
+
     if (requestBody && modelRequestPaths.has(requestUrl.pathname)) {
-      let payload: { model?: string; [key: string]: unknown };
       try {
         payload = JSON.parse(new TextDecoder().decode(requestBody)) as { model?: string; [key: string]: unknown };
+        clientModel = typeof payload.model === "string" ? payload.model.trim() : "";
       } catch {
         return json({ error: "Invalid JSON body" }, { status: 400 });
       }
-      const clientModel = typeof payload.model === "string" ? payload.model.trim() : "";
-      const parsedModel = parseProjectModel(project, clientModel);
-      requestedModel = parsedModel.publicModel || null;
-      upstreamModel = parsedModel.upstreamModel || null;
-      if (modelSettings.models.length > 0) {
-        if (!parsedModel.prefixed || !upstreamModel || !modelSettings.models.includes(upstreamModel)) {
-          return json({
-            error: "Model is not enabled",
-            model: clientModel || null,
-            allowedModels: modelSettings.models.map((model) => prefixProjectModel(project, model)),
-          }, { status: 403 });
-        }
-      }
-      if (upstreamModel && clientModel !== upstreamModel) {
-        payload.model = upstreamModel;
-        const encoded = new TextEncoder().encode(JSON.stringify(payload));
-        requestBody = encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength);
-        requestBodyRewritten = true;
+    }
+
+    const allAccounts = await this.getAccounts();
+    const candidates: { account: AccountRecord; project: ProjectRecord; upstreamModel: string }[] = [];
+    
+    for (const project of allowedProjects) {
+      if (clientModel && project.disabledModels.includes(clientModel)) continue;
+      const upstreamModel = clientModel ? (project.modelMapping[clientModel] || clientModel) : "";
+      const accounts = allAccounts.filter(a => a.projectId === project.id && a.enabled);
+      for (const account of accounts) {
+        candidates.push({ account, project, upstreamModel });
       }
     }
+
+    if (candidates.length === 0) return json({ error: "Model not found or no available accounts" }, { status: 503 });
+
     const excluded = new Set<string>();
     const routing = await this.getRoutingSettings();
-    const enabledCount = (await this.getAccounts()).filter((item) => item.projectId === project.id && item.enabled).length;
-    const maxAttempts = Math.max(1, Math.min(routing.maxRetryAccounts, enabledCount || routing.maxRetryAccounts));
+    const maxAttempts = Math.max(1, Math.min(routing.maxRetryAccounts, candidates.length || routing.maxRetryAccounts));
     let attempts = 0;
+
     while (true) {
       if (attempts >= maxAttempts) {
         return json({ error: "Retry limit reached", attempts, maxAttempts }, { status: 502 });
       }
-      const account = await this.pickProjectAccount(project.id, excluded);
-      if (!account) return json({ error: "No available accounts" }, { status: 503 });
+      const candidate = await this.pickCandidateAccount(candidates, excluded);
+      if (!candidate) return json({ error: "No available accounts" }, { status: 503 });
+      
+      const account = candidate.account;
       attempts += 1;
       const startedAt = Date.now();
+      
+      let currentRequestBody = requestBody;
+      let requestBodyRewritten = false;
+      
+      if (payload && candidate.upstreamModel && clientModel !== candidate.upstreamModel) {
+        payload.model = candidate.upstreamModel;
+        const encoded = new TextEncoder().encode(JSON.stringify(payload));
+        currentRequestBody = encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength);
+        requestBodyRewritten = true;
+      }
+
       try {
         const headers = new Headers(request.headers);
         headers.set("authorization", `Bearer ${account.apiKey}`);
@@ -3700,32 +3743,32 @@ export class RouterState extends DurableObject<Env> {
         const upstream = await fetch(this.buildUpstreamUrl(account, requestUrl), {
           method: request.method,
           headers,
-          body: requestBody,
+          body: currentRequestBody,
           redirect: "manual",
         });
         if (isAccountFailureStatus(upstream.status)) {
           excluded.add(account.id);
           await this.markUnhealthy(account.id);
           await this.recordProxyResult(account.id, upstream.status, Date.now() - startedAt, `HTTP ${upstream.status}`);
-          await this.recordModelHourlyResult(requestedModel, upstream.status, Date.now() - startedAt);
+          await this.recordModelHourlyResult(clientModel || "unknown", upstream.status, Date.now() - startedAt);
           if (routing.disableOnFailure) await this.disableAccount(account.id);
-          if (excluded.size >= enabledCount || attempts >= maxAttempts) {
+          if (excluded.size >= candidates.length || attempts >= maxAttempts) {
             return this.withProxyHeaders(upstream, account.id);
           }
           continue;
         }
         await this.markHealthy(account.id);
         await this.recordProxyResult(account.id, upstream.status, Date.now() - startedAt);
-        await this.recordModelHourlyResult(requestedModel, upstream.status, Date.now() - startedAt);
+        await this.recordModelHourlyResult(clientModel || "unknown", upstream.status, Date.now() - startedAt);
         return this.withProxyHeaders(upstream, account.id);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         excluded.add(account.id);
         await this.markUnhealthy(account.id);
         await this.recordProxyResult(account.id, 502, Date.now() - startedAt, message);
-        await this.recordModelHourlyResult(requestedModel, 502, Date.now() - startedAt);
+        await this.recordModelHourlyResult(clientModel || "unknown", 502, Date.now() - startedAt);
         if (routing.disableOnFailure) await this.disableAccount(account.id);
-        if (excluded.size >= enabledCount || attempts >= maxAttempts) {
+        if (excluded.size >= candidates.length || attempts >= maxAttempts) {
           return json({ error: "All accounts failed", details: message }, { status: 502 });
         }
       }
@@ -3883,33 +3926,41 @@ export class RouterState extends DurableObject<Env> {
       return json({ ok: true, project: toPublicProject(project, 0) }, { status: 201 });
     }
 
-    const projectKeyMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/keys\/([^/]+)$/);
-    const projectGenerateKeyMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/keys$/);
     const projectMatch = pathname.match(/^\/admin\/projects\/([^/]+)$/);
-    if (projectGenerateKeyMatch && request.method === "POST") {
-      const projectId = decodeURIComponent(projectGenerateKeyMatch[1]);
-      const projects = await this.getProjects();
-      const project = projects.find((item) => item.id === projectId);
-      if (!project) return json({ error: "Project not found" }, { status: 404 });
-      const key = generateProjectApiKey();
-      project.apiKeys.push(key);
-      project.updatedAt = Date.now();
-      await this.saveProjects(projects);
-      const accounts = await this.getAccounts();
-      return json({ ok: true, key, project: toPublicProject(project, accounts.filter((account) => account.projectId === project.id).length) }, { status: 201 });
+    const keyMatch = pathname.match(/^\/admin\/keys\/([^/]+)$/);
+
+    if (pathname === "/admin/keys" && request.method === "GET") {
+      return json({ keys: await this.getApiKeys() });
     }
 
-    if (projectKeyMatch && request.method === "DELETE") {
-      const projectId = decodeURIComponent(projectKeyMatch[1]);
-      const key = decodeURIComponent(projectKeyMatch[2]);
-      const projects = await this.getProjects();
-      const project = projects.find((item) => item.id === projectId);
-      if (!project) return json({ error: "Project not found" }, { status: 404 });
-      project.apiKeys = project.apiKeys.filter((item) => item !== key);
-      project.updatedAt = Date.now();
-      await this.saveProjects(projects);
-      const accounts = await this.getAccounts();
-      return json({ ok: true, project: toPublicProject(project, accounts.filter((account) => account.projectId === project.id).length) });
+    if (pathname === "/admin/keys" && request.method === "POST") {
+      const payload = await readJsonBody<ApiKeyInput>(request);
+      const keys = await this.getApiKeys();
+      const next = sanitizeApiKeyInput(payload);
+      keys.push(next);
+      await this.saveApiKeys(keys);
+      return json({ ok: true, key: next }, { status: 201 });
+    }
+
+    if (keyMatch) {
+      const keyId = decodeURIComponent(keyMatch[1]);
+      const keys = await this.getApiKeys();
+      const keyRecord = keys.find((item) => item.id === keyId);
+      if (!keyRecord) return json({ error: "API Key not found" }, { status: 404 });
+
+      if (request.method === "PATCH") {
+        const payload = await readJsonBody<ApiKeyInput>(request);
+        const next = sanitizeApiKeyInput({ ...payload, id: keyRecord.id }, keyRecord);
+        const index = keys.findIndex((item) => item.id === keyRecord.id);
+        keys[index] = next;
+        await this.saveApiKeys(keys);
+        return json({ ok: true, key: next });
+      }
+
+      if (request.method === "DELETE") {
+        await this.saveApiKeys(keys.filter((item) => item.id !== keyId));
+        return json({ ok: true });
+      }
     }
 
     if (projectMatch) {
@@ -3976,44 +4027,12 @@ export class RouterState extends DurableObject<Env> {
       return json({ ok: true, routing: next });
     }
 
-    const projectModelsMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/models$/);
     const projectModelsDiscoverMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/models\/discover$/);
-    const modelProjectId = projectModelsMatch?.[1]
-      ? decodeURIComponent(projectModelsMatch[1])
-      : pathname === "/admin/models"
-        ? DEFAULT_PROJECT_ID
-        : "";
     const modelDiscoverProjectId = projectModelsDiscoverMatch?.[1]
       ? decodeURIComponent(projectModelsDiscoverMatch[1])
       : pathname === "/admin/models/discover"
         ? DEFAULT_PROJECT_ID
         : "";
-
-    if (modelProjectId && request.method === "GET") {
-      const project = await this.getProjectOrNotFound(modelProjectId);
-      if (project instanceof Response) return project;
-      const settings = await this.getProjectModelSettings(modelProjectId);
-      return json({
-        models: settings.models,
-        publicModels: settings.models.map((model) => prefixProjectModel(project, model)),
-        project: toPublicProject(project, (await this.getAccounts()).filter((account) => account.projectId === project.id).length),
-      });
-    }
-
-    if (modelProjectId && request.method === "PATCH") {
-      const project = await this.getProjectOrNotFound(modelProjectId);
-      if (project instanceof Response) return project;
-      const payload = await readJsonBody<Partial<ModelSettings>>(request);
-      const next = {
-        models: normalizeModelList(payload.models).map((model) => parseProjectModel(project, model).upstreamModel).filter(Boolean),
-      };
-      await this.saveProjectModelSettings(modelProjectId, next);
-      return json({
-        ok: true,
-        models: next.models,
-        publicModels: next.models.map((model) => prefixProjectModel(project, model)),
-      });
-    }
 
     if (modelDiscoverProjectId && request.method === "POST") {
       const project = await this.getProjectOrNotFound(modelDiscoverProjectId);
@@ -4062,7 +4081,7 @@ export class RouterState extends DurableObject<Env> {
         }
       }
       const recommendations = [...modelMap.entries()]
-        .map(([model, labels]) => ({ model, publicModel: prefixProjectModel(project, model), accounts: labels.sort((a, b) => a.localeCompare(b)) }))
+        .map(([model, labels]) => ({ model, publicModel: model, accounts: labels.sort((a, b) => a.localeCompare(b)) }))
         .sort((a, b) => b.accounts.length - a.accounts.length || a.model.localeCompare(b.model));
       return json({
         ok: results.some((item) => item.ok),
