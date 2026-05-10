@@ -2662,6 +2662,17 @@ function renderAdminPageV2(): string {
         </div>
         <button id="close-model-modal" class="ghost icon-btn" aria-label="Close">×</button>
       </div>
+      <textarea id="open-models" class="hidden" style="display:none"></textarea>
+      <div class="grid two" style="margin-bottom:12px">
+        <div>
+          <label class="muted" style="font-size:12px;margin-bottom:6px;display:block">Discovery Node Limit</label>
+          <input id="model-discovery-limit" type="number" min="1" max="50" step="1" value="8" />
+        </div>
+        <div>
+          <label class="muted" style="font-size:12px;margin-bottom:6px;display:block">Test Model</label>
+          <input id="api-test-model" placeholder="Default: gpt-4.1-mini" />
+        </div>
+      </div>
       <div class="row">
         <div style="flex:1"><input id="model-search-filter" placeholder="Search models..." /></div>
         <button id="discover-models" class="secondary">Auto Discover</button>
@@ -2670,7 +2681,7 @@ function renderAdminPageV2(): string {
       <details class="advanced-models">
         <summary>Advanced: Custom Models List</summary>
         <p class="muted" style="font-size:13px;margin:8px 0">One model per line or comma-separated.</p>
-        <textarea id="models-list" placeholder="gpt-3.5-turbo&#10;gpt-4"></textarea>
+        <textarea id="open-models-advanced" placeholder="gpt-3.5-turbo&#10;gpt-4"></textarea>
       </details>
       <div class="actions" style="margin-top:24px;justify-content:flex-end">
         <button id="save-models">Save Configuration</button>
