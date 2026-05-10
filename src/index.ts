@@ -999,6 +999,7 @@ function renderAdminPageV2(): string {
       --warn: #f59e0b;
       --bad: #ef4444;
       --shadow: 0 8px 32px -4px rgba(15,23,42,0.08);
+      --sidebar-bg: #ffffff;
     }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; overflow-x: hidden; font-family: var(--font-sans); font-weight: 400; background: var(--bg); background-image: radial-gradient(ellipse at 15% 0%, rgba(59,130,246,0.07) 0%, transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(139,92,246,0.05) 0%, transparent 50%); color: var(--text); }
@@ -1028,8 +1029,6 @@ function renderAdminPageV2(): string {
     .icon-btn { width: 34px; height: 34px; padding: 0; display: grid; place-items: center; border-radius: 8px; }
     .project-switcher { display: grid; gap: 7px; }
     .project-lane { display: grid; gap: 8px; }
-    .project-lane-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-soft); color: var(--text); font-weight: 600; }
-    .project-lane-title span:last-child { color: var(--muted); font-size: 12px; font-weight: 500; }
     .project-item { width: 100%; text-align: left; display: grid; gap: 5px; padding: 10px; border: 1px solid transparent; background: transparent; color: var(--text); }
     .project-item.active { border-color: rgba(59,130,246,0.35); background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.05)); color: var(--accent); }
     .project-item { transition: all 150ms ease; border-radius: 10px; }
@@ -1180,6 +1179,7 @@ function renderAdminPageV2(): string {
         transition: transform 220ms ease;
         border-right: 1px solid var(--line);
         border-bottom: 0;
+        background: var(--sidebar-bg);
         box-shadow: 18px 0 42px rgba(15, 23, 42, 0.16);
       }
       .shell.menu-open aside { transform: translateX(0); }
@@ -1187,6 +1187,17 @@ function renderAdminPageV2(): string {
       nav { grid-template-columns: 1fr; }
       .nav-btn { justify-content: flex-start; white-space: normal; }
       aside .ghost, aside .danger { width: 100%; }
+      .toolbar, .actions {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        max-width: 100%;
+        padding-bottom: 2px;
+        -webkit-overflow-scrolling: touch;
+      }
+      .toolbar > *, .actions > * { flex: 0 0 auto; }
+      .panel .actions button { padding: 8px 10px; }
+      .accounts-table .actions { display: flex; flex-wrap: nowrap; overflow: visible; padding-bottom: 0; }
+      .accounts-table button { padding: 6px 8px; }
       header { display: grid; }
       .stats, .grid.two, .grid.three { grid-template-columns: 1fr; }
       .bar { grid-template-columns: 1fr; }
@@ -1197,8 +1208,6 @@ function renderAdminPageV2(): string {
       .mobile-bar { height: 48px; padding: 6px 10px; }
       .shell { padding-top: 48px; }
       aside { width: min(86vw, 292px); padding: 16px 12px; }
-      .actions { display: grid; grid-template-columns: 1fr; }
-      .actions button { width: 100%; }
     }
     @supports not (background: color-mix(in srgb, white, transparent)) {
       @media (max-width: 760px) { .mobile-bar { background: var(--panel); } }
@@ -1212,9 +1221,10 @@ function renderAdminPageV2(): string {
         --muted: #94a3b8;
         --line: rgba(255,255,255,0.07);
         --shadow: 0 8px 32px -4px rgba(0,0,0,0.5);
+        --sidebar-bg: #101622;
       }
       body { background-image: radial-gradient(ellipse at 15% 0%, rgba(59,130,246,0.05) 0%, transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(139,92,246,0.04) 0%, transparent 50%); }
-      aside { background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)); border-right-color: rgba(255,255,255,0.06); }
+      aside { border-right-color: rgba(255,255,255,0.06); }
     }
     .dropdown { position: absolute; z-index: 50; background: var(--panel); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 36px rgba(0,0,0,0.15); padding: 6px; display: flex; flex-direction: column; gap: 2px; min-width: 140px; animation: modalIn 150ms ease-out; }
     .dropdown button { background: transparent; color: var(--text); padding: 8px 12px; text-align: left; font-size: 13px; border-radius: 6px; transition: background 150ms; box-shadow: none; transform: none; }
@@ -1265,7 +1275,6 @@ function renderAdminPageV2(): string {
         <div class="side-head"><span>项目工作区</span><button class="ghost icon-btn" id="new-project" title="新建项目">+</button></div>
         <div class="project-hint">只有这里的项目切换会影响“项目”页面，仪表盘和设置保持全局。</div>
         <div class="project-lane">
-          <button class="project-lane-title" id="open-project-workspace"><span>项目管理</span><span id="project-count-pill">0 个</span></button>
           <div id="project-switcher" class="project-switcher"></div>
         </div>
       </div>
@@ -1638,7 +1647,6 @@ function renderAdminPageV2(): string {
       els.menuToggle.setAttribute("aria-expanded", "false");
     }
     function renderProjectSwitcher() {
-      document.getElementById("project-count-pill").textContent = projects.length + " 个";
       els.projectSwitcher.innerHTML = projects.length ? projects.map((project) => {
         const itemSummary = projectStat(project.id);
         const isActive = project.id === selectedProjectId;
@@ -2134,7 +2142,6 @@ function renderAdminPageV2(): string {
     els.token.addEventListener("keydown", (event) => { if (event.key === "Enter") verifyLogin(); });
     document.getElementById("reload").addEventListener("click", refreshAll);
     document.getElementById("logout").addEventListener("click", () => { localStorage.removeItem("hyhub-admin-token"); location.reload(); });
-    document.getElementById("open-project-workspace").addEventListener("click", () => setPage("projects"));
     document.getElementById("new-project").addEventListener("click", () => openProjectModal(null));
     document.getElementById("edit-project").addEventListener("click", () => openProjectModal(selectedProject()));
     document.getElementById("open-project-data-modal").addEventListener("click", openOpsModal);
