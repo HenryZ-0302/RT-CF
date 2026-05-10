@@ -242,7 +242,7 @@ function normalizeBaseUrl(raw: string): string {
 }
 
 function ensureAuthorized(request: Request, token: string): Response | null {
-  if (!token || getBearer(request) !== token) {
+  if (!token?.trim() || getBearer(request).trim() !== token.trim()) {
     return json({ error: "Unauthorized" }, { status: 401 });
   }
   return null;
@@ -1591,9 +1591,14 @@ function renderAdminPageV2(): string {
       try {
         localStorage.setItem("hyhub-admin-token", getToken());
         status(els.gateStatus, "验证中...");
+        await api("/admin/auth");
         els.gate.classList.add("hidden");
         els.app.classList.remove("hidden");
-        await refreshAll();
+        try {
+          await refreshAll();
+        } catch (error) {
+          status(els.projectStatus, "后台数据加载失败：" + error.message, true);
+        }
         setPage((location.hash || "#dashboard").slice(1) in pageMeta ? (location.hash || "#dashboard").slice(1) : "dashboard");
         status(els.gateStatus, "");
       } catch (error) {
@@ -1890,6 +1895,11 @@ export default {
     if (pathname === "/admin/ui") {
       url.pathname = "/admin";
       return Response.redirect(url.toString(), 302);
+    }
+    if (pathname === "/admin/auth") {
+      const authError = ensureAuthorized(request, env.AUTH_TOKEN);
+      if (authError) return authError;
+      return json({ ok: true });
     }
     const id = env.ROUTER_STATE.idFromName("router");
     const stub = env.ROUTER_STATE.get(id);
