@@ -168,19 +168,50 @@ function normalizeModelList(value: unknown): string[] {
   return models.slice(0, 100);
 }
 
-function normalizeModelMapping(value: unknown): Record<string, string> {
+function stripProjectModelPrefix(projectId: string, model: string): string {
+  const trimmed = model.trim();
+  const prefix = `${projectId}/`;
+  return trimmed.startsWith(prefix) ? trimmed.slice(prefix.length).trim() : trimmed;
+}
+
+function prefixProjectModel(projectId: string, model: string): string {
+  const stripped = stripProjectModelPrefix(projectId, model);
+  return stripped ? `${projectId}/${stripped}` : "";
+}
+
+function parseProjectModel(model: string): { projectId: string | null; model: string; prefixed: boolean } {
+  const trimmed = model.trim();
+  const slash = trimmed.indexOf("/");
+  if (slash > 0 && slash < trimmed.length - 1) {
+    return {
+      projectId: trimmed.slice(0, slash).trim(),
+      model: trimmed.slice(slash + 1).trim(),
+      prefixed: true,
+    };
+  }
+  return { projectId: null, model: trimmed, prefixed: false };
+}
+
+function normalizeModelMapping(value: unknown, projectId?: string): Record<string, string> {
   const incoming = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const mapping: Record<string, string> = {};
   for (const [k, v] of Object.entries(incoming)) {
-    const key = k.trim();
-    const val = String(v ?? "").trim();
+    const key = projectId ? stripProjectModelPrefix(projectId, k) : k.trim();
+    const val = projectId ? stripProjectModelPrefix(projectId, String(v ?? "")) : String(v ?? "").trim();
     if (key && val) mapping[key] = val;
   }
   return mapping;
 }
 
-function normalizeDisabledModels(value: unknown): string[] {
-  return normalizeModelList(value);
+function normalizeDisabledModels(value: unknown, projectId?: string): string[] {
+  return normalizeModelList(value).map((model) => projectId ? stripProjectModelPrefix(projectId, model) : model);
+}
+
+function projectPublicModels(project: ProjectRecord): string[] {
+  return Object.keys(project.modelMapping ?? {})
+    .filter((model) => !project.disabledModels.includes(model))
+    .map((model) => prefixProjectModel(project.id, model))
+    .filter(Boolean);
 }
 
 function createEmptyModelBucket(): ModelHourlyBucket {
@@ -303,6 +334,25 @@ function sanitizeApiKeyInput(payload: ApiKeyInput, existing?: ApiKeyRecord): Api
   };
 }
 
+function restoreApiKeyRecord(value: Partial<ApiKeyRecord>, projectIds: Set<string>): ApiKeyRecord | null {
+  const key = typeof value.key === "string" && value.key.trim() ? value.key.trim() : "";
+  if (!key) return null;
+  const now = Date.now();
+  const rawProjects = value.projects === "ALL"
+    ? "ALL"
+    : Array.isArray(value.projects)
+      ? [...new Set(value.projects.map((item) => String(item ?? "").trim()).filter((item) => item && projectIds.has(item)))]
+      : [DEFAULT_PROJECT_ID].filter((item) => projectIds.has(item));
+  return {
+    id: typeof value.id === "string" && value.id.trim() ? value.id.trim() : generateApiKeyId(),
+    key,
+    name: typeof value.name === "string" && value.name.trim() ? value.name.trim() : "恢复的 API 密钥",
+    projects: rawProjects === "ALL" || rawProjects.length > 0 ? rawProjects : "ALL",
+    createdAt: typeof value.createdAt === "number" ? value.createdAt : now,
+    updatedAt: now,
+  };
+}
+
 function sanitizeProjectInput(payload: ProjectInput, existing?: ProjectRecord): ProjectRecord {
   const now = Date.now();
   const id = payload.id?.trim() || existing?.id || generateProjectId();
@@ -310,8 +360,8 @@ function sanitizeProjectInput(payload: ProjectInput, existing?: ProjectRecord): 
     id,
     name: payload.name?.trim() || existing?.name || id,
     enabled: payload.enabled ?? existing?.enabled ?? true,
-    modelMapping: payload.modelMapping === undefined ? existing?.modelMapping ?? {} : normalizeModelMapping(payload.modelMapping),
-    disabledModels: payload.disabledModels === undefined ? existing?.disabledModels ?? [] : normalizeDisabledModels(payload.disabledModels),
+    modelMapping: payload.modelMapping === undefined ? existing?.modelMapping ?? {} : normalizeModelMapping(payload.modelMapping, id),
+    disabledModels: payload.disabledModels === undefined ? existing?.disabledModels ?? [] : normalizeDisabledModels(payload.disabledModels, id),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -429,6 +479,7 @@ function renderMonitorPage(): string {
   <style>
     :root {
       color-scheme: light dark;
+      --font-sans: 'MiSans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       --bg: #f0f4f8;
       --panel: rgba(255,255,255,0.75);
       --panel-soft: rgba(241,245,249,0.6);
@@ -445,7 +496,7 @@ function renderMonitorPage(): string {
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: 'MiSans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: var(--font-sans);
       background: var(--bg);
       background-image: radial-gradient(ellipse at 20% 0%, rgba(59,130,246,0.08) 0%, transparent 60%), radial-gradient(ellipse at 80% 100%, rgba(139,92,246,0.06) 0%, transparent 50%);
       color: var(--text);
@@ -464,7 +515,7 @@ function renderMonitorPage(): string {
       align-items: center;
       gap: 10px;
       color: var(--text);
-      font-weight: 800;
+      font-weight: 600;
       letter-spacing: 0;
     }
     .brand-mark {
@@ -506,7 +557,7 @@ function renderMonitorPage(): string {
     }
     .card:hover { transform: translateY(-4px); box-shadow: 0 16px 48px -8px rgba(15,23,42,0.14); }
     .hero { padding: clamp(20px, 3vw, 30px); display: grid; gap: 12px; }
-    .eyebrow { color: var(--accent); font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+    .eyebrow { color: var(--accent); font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
     h1 { margin: 0; max-width: 760px; font-size: clamp(32px, 5vw, 54px); line-height: 1; letter-spacing: 0; text-wrap: pretty; }
     p { margin: 0; color: var(--muted); line-height: 1.55; text-wrap: pretty; }
     .status-line { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin-top: 4px; padding-left: 2px; }
@@ -595,9 +646,9 @@ function renderMonitorPage(): string {
       border-bottom: 1px solid var(--line);
       font-size: 13px;
     }
-    .model-row.head { color: var(--muted); font-size: 12px; font-weight: 700; background: var(--panel-soft); }
+    .model-row.head { color: var(--muted); font-size: 12px; font-weight: 600; background: var(--panel-soft); }
     .model-row:last-child { border-bottom: 0; }
-    .model-name { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .model-name { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 13px var(--font-sans); }
     .model-provider, .model-latency { color: var(--muted); }
     .hour-strip {
       display: grid;
@@ -936,6 +987,7 @@ function renderAdminPageV2(): string {
   <style>
     :root {
       color-scheme: light dark;
+      --font-sans: 'MiSans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       --bg: #f0f4f8;
       --panel: rgba(255,255,255,0.75);
       --panel-soft: rgba(241,245,249,0.6);
@@ -949,7 +1001,7 @@ function renderAdminPageV2(): string {
       --shadow: 0 8px 32px -4px rgba(15,23,42,0.08);
     }
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; overflow-x: hidden; font-family: 'MiSans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); background-image: radial-gradient(ellipse at 15% 0%, rgba(59,130,246,0.07) 0%, transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(139,92,246,0.05) 0%, transparent 50%); color: var(--text); }
+    body { margin: 0; min-height: 100vh; overflow-x: hidden; font-family: var(--font-sans); font-weight: 400; background: var(--bg); background-image: radial-gradient(ellipse at 15% 0%, rgba(59,130,246,0.07) 0%, transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(139,92,246,0.05) 0%, transparent 50%); color: var(--text); }
     body.menu-lock { overflow: hidden; }
     .hidden { display: none !important; }
     .gate { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
@@ -960,28 +1012,34 @@ function renderAdminPageV2(): string {
     .scrim { display: none; }
     aside { position: sticky; top: 0; height: 100vh; min-width: 0; overflow-y: auto; border-right: 1px solid var(--line); background: var(--panel); padding: 22px 16px; display: flex; flex-direction: column; gap: 18px; }
     .brand { padding: 4px 6px 16px; margin-bottom: 2px; border-bottom: 1px dashed var(--line); }
-    .brand h1 { margin: 0 0 4px; font-size: 26px; font-weight: 800; letter-spacing: -0.02em; background: linear-gradient(135deg, var(--accent), #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .brand h1 { margin: 0 0 4px; font-size: 26px; font-weight: 600; letter-spacing: 0; background: linear-gradient(135deg, var(--accent), #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     .brand p { margin: 0; font-size: 13px; color: var(--muted); }
     .muted { color: var(--muted); line-height: 1.55; }
-    nav { display: grid; gap: 8px; }
+    nav { display: grid; gap: 14px; }
+    .nav-group { display: grid; gap: 8px; }
+    .nav-label { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; padding: 0 6px; }
     .nav-btn { justify-content: flex-start; background: transparent; color: var(--text); border: 1px solid transparent; }
     .nav-btn.active { background: linear-gradient(135deg, rgba(59,130,246,0.12), rgba(139,92,246,0.08)); border-color: rgba(59,130,246,0.25); color: var(--accent); }
     .nav-btn { transition: all 150ms ease; }
     .nav-btn:hover:not(.active) { background: var(--panel-soft); }
     .side-section { border-top: 1px solid var(--line); padding-top: 14px; display: grid; gap: 10px; }
     .side-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .side-head span { color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .side-head span { color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
     .icon-btn { width: 34px; height: 34px; padding: 0; display: grid; place-items: center; border-radius: 8px; }
     .project-switcher { display: grid; gap: 7px; }
+    .project-lane { display: grid; gap: 8px; }
+    .project-lane-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-soft); color: var(--text); font-weight: 600; }
+    .project-lane-title span:last-child { color: var(--muted); font-size: 12px; font-weight: 500; }
     .project-item { width: 100%; text-align: left; display: grid; gap: 5px; padding: 10px; border: 1px solid transparent; background: transparent; color: var(--text); }
     .project-item.active { border-color: rgba(59,130,246,0.35); background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.05)); color: var(--accent); }
     .project-item { transition: all 150ms ease; border-radius: 10px; }
     .project-item:hover:not(.active) { background: var(--panel-soft); }
     .project-item .meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
+    .project-hint { color: var(--muted); font-size: 12px; line-height: 1.5; padding: 0 6px; }
     .sidebar-actions { margin-top: auto; display: grid; gap: 8px; }
     main { min-width: 0; max-width: 100%; overflow-x: hidden; padding: 22px; display: grid; gap: 16px; align-content: start; }
     header { min-width: 0; display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; border-bottom: 1px solid var(--line); padding-bottom: 14px; }
-    h2, h3 { margin: 0; letter-spacing: 0; }
+    h2, h3 { margin: 0; letter-spacing: 0; font-weight: 600; }
     h2 { font-size: 26px; }
     h3 { font-size: 17px; }
     button, input, textarea, select { font: inherit; border-radius: 8px; }
@@ -1003,12 +1061,23 @@ function renderAdminPageV2(): string {
     .stats { min-width: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
     .stat { background: var(--panel); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--line); border-radius: 14px; padding: 14px; transition: transform 200ms ease; }
     .stat:hover { transform: translateY(-2px); }
-    .stat b { display: block; font-size: 25px; margin-bottom: 6px; }
+    b, strong { font-weight: 600; }
+    .stat b { display: block; font-size: 25px; margin-bottom: 6px; font-weight: 600; }
     .workspace-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
     .workspace-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .model-grid { display: grid; gap: 8px; margin-top: 12px; }
     .model-option { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; border: 1px solid var(--line); border-radius: 8px; padding: 11px; background: var(--panel); cursor: pointer; }
     .model-option input { width: auto; margin-top: 3px; }
+    .choice-grid { display: grid; gap: 8px; }
+    .choice-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--panel); }
+    .choice-row input { width: auto; margin-top: 3px; }
+    .project-checks { display: grid; gap: 8px; max-height: 190px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: var(--panel-soft); }
+    .project-checks label { display: flex; align-items: center; gap: 8px; }
+    .project-checks input { width: auto; }
+    .model-picks { display: grid; gap: 8px; max-height: 280px; overflow: auto; }
+    .model-pick { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: var(--panel); }
+    .model-pick input { width: auto; margin-top: 3px; }
+    .setting-card { display: grid; gap: 12px; align-content: start; }
     .advanced-models { margin-top: 12px; }
     .advanced-models summary { cursor: pointer; color: var(--muted); }
     .list { display: grid; gap: 8px; }
@@ -1020,11 +1089,17 @@ function renderAdminPageV2(): string {
     .tag.ok { color: var(--ok); border-color: rgba(15, 159, 110, .35); }
     .tag.bad { color: var(--bad); border-color: rgba(214, 69, 69, .35); }
     .tag.warn { color: var(--warn); border-color: rgba(183, 121, 31, .35); }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .mono { font-family: var(--font-sans); font-variant-numeric: tabular-nums; }
     .table-wrap { max-width: 100%; overflow-x: auto; overflow-y: hidden; border: 1px solid var(--line); border-radius: 8px; }
     table { width: 100%; border-collapse: collapse; min-width: 960px; }
     th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 11px 10px; font-size: 13px; vertical-align: middle; }
-    th { color: var(--muted); background: var(--panel-soft); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+    th { color: var(--muted); background: var(--panel-soft); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+    .accounts-table { min-width: 1320px; }
+    .accounts-table th, .accounts-table td { white-space: nowrap; padding: 9px 10px; }
+    .accounts-table .clip { display: block; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .accounts-table .url { max-width: 340px; }
+    .accounts-table .actions { flex-wrap: nowrap; gap: 6px; }
+    .accounts-table button { padding: 7px 9px; }
     tr:last-child td { border-bottom: 0; }
     .status { min-height: 20px; color: var(--muted); font-size: 13px; }
     .key-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 9px; }
@@ -1060,7 +1135,7 @@ function renderAdminPageV2(): string {
         background: color-mix(in srgb, var(--panel) 94%, transparent);
         backdrop-filter: blur(14px);
       }
-      .mobile-title { min-width: 0; display: flex; align-items: center; gap: 9px; font-weight: 800; }
+      .mobile-title { min-width: 0; display: flex; align-items: center; gap: 9px; font-weight: 600; }
       .mobile-title span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .mobile-mark {
         display: grid;
@@ -1180,14 +1255,19 @@ function renderAdminPageV2(): string {
         <p class="muted">项目隔离的 API Hub</p>
       </div>
       <nav>
-        <button class="nav-btn active" data-page="dashboard">仪表盘</button>
-        <button class="nav-btn" data-page="projects">项目</button>
-        <button class="nav-btn" data-page="keys">密钥</button>
-        <button class="nav-btn" data-page="settings">设置</button>
+        <div class="nav-group">
+          <div class="nav-label">全局</div>
+          <button class="nav-btn active" data-page="dashboard">仪表盘</button>
+          <button class="nav-btn" data-page="settings">设置</button>
+        </div>
       </nav>
       <div class="side-section">
-        <div class="side-head"><span>当前项目</span><button class="ghost icon-btn" id="new-project" title="新建项目">+</button></div>
-        <div id="project-switcher" class="project-switcher"></div>
+        <div class="side-head"><span>项目工作区</span><button class="ghost icon-btn" id="new-project" title="新建项目">+</button></div>
+        <div class="project-hint">只有这里的项目切换会影响“项目”页面，仪表盘和设置保持全局。</div>
+        <div class="project-lane">
+          <button class="project-lane-title" id="open-project-workspace"><span>项目管理</span><span id="project-count-pill">0 个</span></button>
+          <div id="project-switcher" class="project-switcher"></div>
+        </div>
       </div>
       <div class="sidebar-actions">
         <button class="ghost" id="reload">刷新</button>
@@ -1204,6 +1284,21 @@ function renderAdminPageV2(): string {
       </header>
 
       <section id="page-dashboard" class="page active">
+        <section class="panel">
+          <div class="row">
+            <div>
+              <h3>统计范围</h3>
+              <p class="muted" style="margin:4px 0 0">仪表盘可看全局总览，也可以临时查看单个项目，不会改变侧边栏当前项目。</p>
+            </div>
+            <div class="toolbar">
+              <select id="dashboard-scope" style="width:auto; min-width:140px">
+                <option value="all">总览</option>
+                <option value="project">单个项目</option>
+              </select>
+              <select id="dashboard-project-scope" style="width:auto; min-width:180px"></select>
+            </div>
+          </div>
+        </section>
         <div class="stats">
           <div class="stat"><b id="dash-projects">0</b><span class="muted">项目</span></div>
           <div class="stat"><b id="dash-accounts">0</b><span class="muted">账号</span></div>
@@ -1234,6 +1329,7 @@ function renderAdminPageV2(): string {
                 </div>
                 <div class="actions">
                   <button id="edit-project" class="ghost">编辑项目</button>
+                  <button id="open-project-data-modal" class="ghost">账号数据</button>
                 </div>
               </div>
               <div class="status" id="project-status"></div>
@@ -1250,26 +1346,37 @@ function renderAdminPageV2(): string {
         </section>
       </section>
 
-      <section id="page-keys" class="page">
-        <section class="panel">
-          <div class="row">
-            <div>
-              <h3>全局 API Key 管理</h3>
-              <p class="muted" style="margin-top:4px">创建并管理全局 API Key，可分配允许访问的项目。</p>
-            </div>
-            <div class="actions">
-              <button id="create-key">创建 API Key</button>
-              <button id="copy-base-url" class="secondary">复制 Base URL</button>
-            </div>
-          </div>
-          <div class="status" id="key-status" style="margin-top:12px"></div>
-          <div id="keys-table" style="margin-top:12px"></div>
-        </section>
-      </section>
-
       <section id="page-settings" class="page">
         <div class="grid two">
-          <section class="panel">
+          <section class="panel setting-card">
+            <div class="row">
+              <div>
+                <h3>API 密钥</h3>
+                <p class="muted" style="margin:4px 0 0">密钥可以开放给全部项目、单个项目或多个项目。</p>
+              </div>
+              <div class="actions">
+                <button id="create-key">创建 API Key</button>
+                <button id="copy-base-url" class="secondary">复制 Base URL</button>
+              </div>
+            </div>
+            <div class="status" id="key-status"></div>
+            <div id="keys-table"></div>
+          </section>
+          <section class="panel setting-card">
+            <div class="row">
+              <div>
+                <h3>开放模型</h3>
+                <p class="muted" style="margin:4px 0 0">按项目拉取模型并生成项目前缀，例如 example/gpt-5.5。</p>
+              </div>
+              <div class="actions">
+                <button id="open-model-modal">管理模型</button>
+              </div>
+            </div>
+            <select id="model-project-select"></select>
+            <div id="model-settings-summary" class="list"></div>
+            <div class="status" id="model-settings-status"></div>
+          </section>
+          <section class="panel setting-card">
             <h3>路由策略</h3>
             <div class="grid two" style="margin-top:12px">
               <input id="max-retry-accounts" type="number" min="1" max="20" step="1" placeholder="失败重试账号数" />
@@ -1278,15 +1385,15 @@ function renderAdminPageV2(): string {
             <div class="actions"><button id="save-routing">保存路由策略</button></div>
             <div class="status" id="routing-status"></div>
           </section>
-          <section class="panel">
-            <h3>导入 / 导出 / 统计</h3>
-            <p class="muted">导入导出作用于侧边栏当前项目账号池；清空统计只清真实 API 调用统计。</p>
+          <section class="panel setting-card">
+            <h3>备份 / 恢复 / 统计</h3>
+            <p class="muted">默认导出和恢复所有项目、账号池、API Key、路由策略和统计快照。</p>
             <div class="actions">
               <button id="open-ops-modal" class="secondary">打开数据操作</button>
             </div>
             <div class="status" id="ops-status"></div>
           </section>
-          <section class="panel">
+          <section class="panel setting-card">
             <h3>系统设置</h3>
             <div class="grid two" style="margin-top:12px">
               <input id="api-test-model" placeholder="API 检测模型，默认 gpt-4.1-mini" />
@@ -1311,10 +1418,6 @@ function renderAdminPageV2(): string {
         <input id="project-name" placeholder="项目名称" />
       </div>
       <label class="toolbar"><input id="project-enabled" type="checkbox" checked /> 启用项目</label>
-      <div class="grid two">
-        <textarea id="project-model-mapping" placeholder='模型映射 (JSON)，例如: {"gpt-4": "gpt-4-0613"}'></textarea>
-        <textarea id="project-disabled-models" placeholder="禁用的模型列表，一行一个"></textarea>
-      </div>
       <div class="actions">
         <button id="save-project">保存项目</button>
         <button id="cancel-project-modal" class="ghost">取消</button>
@@ -1357,13 +1460,42 @@ function renderAdminPageV2(): string {
       </div>
       <div class="grid">
         <input id="key-name" placeholder="凭证名称" />
-        <select id="key-projects" multiple style="height: 120px;">
-          <option value="ALL">所有项目 (ALL)</option>
-        </select>
-        <p class="muted">按住 Ctrl/Cmd 多选项目。包含 "所有项目 (ALL)" 则允许访问所有项目。</p>
+        <div class="choice-grid">
+          <label class="choice-row"><input type="radio" name="key-scope" value="ALL" checked /><span><b>全部项目可用</b><br><span class="muted">新增项目也会自动可用。</span></span></label>
+          <label class="choice-row"><input type="radio" name="key-scope" value="SINGLE" /><span><b>单个项目可用</b><br><span class="muted">只允许访问下面选择的一个项目。</span></span></label>
+          <select id="key-single-project"></select>
+          <label class="choice-row"><input type="radio" name="key-scope" value="MULTI" /><span><b>多个项目可用</b><br><span class="muted">勾选需要开放的项目。</span></span></label>
+          <div id="key-project-checks" class="project-checks"></div>
+        </div>
       </div>
       <div class="actions">
         <button id="save-key">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="model-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal wide">
+      <div class="modal-head">
+        <div>
+          <h3>开放模型</h3>
+          <p class="muted" id="model-modal-project" style="margin:6px 0 0"></p>
+        </div>
+        <button id="close-model-modal" class="ghost icon-btn" aria-label="关闭">×</button>
+      </div>
+      <div class="actions">
+        <button id="discover-models" class="secondary">拉取模型列表</button>
+      </div>
+      <div id="model-discover-list" class="model-picks"></div>
+      <details class="advanced-models">
+        <summary>高级映射</summary>
+        <div class="grid two" style="margin-top:10px">
+          <textarea id="model-mapping-editor" placeholder='开放模型 JSON，例如 {"gpt-4": "gpt-4-0613"}'></textarea>
+          <textarea id="disabled-models-editor" placeholder="禁用模型，一行一个"></textarea>
+        </div>
+      </details>
+      <div class="actions">
+        <button id="save-models">保存开放模型</button>
       </div>
     </div>
   </div>
@@ -1373,13 +1505,15 @@ function renderAdminPageV2(): string {
       <div class="modal-head">
         <div>
           <h3>数据操作</h3>
-          <p class="muted" style="margin:6px 0 0">这些操作作用于侧边栏当前项目，清空统计会影响全局真实调用统计。</p>
+          <p class="muted" id="ops-modal-desc" style="margin:6px 0 0">默认操作所有项目；项目账号导入导出会作用于当前项目工作区。</p>
         </div>
         <button id="close-ops-modal" class="ghost icon-btn" aria-label="关闭">×</button>
       </div>
       <div class="actions">
-        <button id="export-accounts" class="secondary">导出账号</button>
-        <button id="import-accounts" class="secondary">导入账号</button>
+        <button id="export-backup" class="secondary">全量备份</button>
+        <button id="restore-backup" class="secondary">恢复备份</button>
+        <button id="export-accounts" class="ghost">导出当前项目账号</button>
+        <button id="import-accounts" class="ghost">导入当前项目账号</button>
         <button id="reset-stats" class="danger">清空统计</button>
       </div>
     </div>
@@ -1399,6 +1533,8 @@ function renderAdminPageV2(): string {
       baseUrl: document.getElementById("base-url"),
       currentProjectPill: document.getElementById("current-project-pill"),
       projectSwitcher: document.getElementById("project-switcher"),
+      dashboardScope: document.getElementById("dashboard-scope"),
+      dashboardProjectScope: document.getElementById("dashboard-project-scope"),
       dashboardProjects: document.getElementById("dashboard-projects"),
       modelHealth: document.getElementById("model-health"),
       projectStatus: document.getElementById("project-status"),
@@ -1406,30 +1542,35 @@ function renderAdminPageV2(): string {
       accountsTable: document.getElementById("accounts-table"),
       keysTable: document.getElementById("keys-table"),
       keyStatus: document.getElementById("key-status"),
+      modelProjectSelect: document.getElementById("model-project-select"),
+      modelSettingsSummary: document.getElementById("model-settings-summary"),
+      modelSettingsStatus: document.getElementById("model-settings-status"),
       routingStatus: document.getElementById("routing-status"),
       opsStatus: document.getElementById("ops-status"),
       projectModal: document.getElementById("project-modal"),
       accountModal: document.getElementById("account-modal"),
       keyModal: document.getElementById("key-modal"),
+      modelModal: document.getElementById("model-modal"),
       opsModal: document.getElementById("ops-modal"),
     };
     const pageMeta = {
       dashboard: ["仪表盘", "查看整体项目、账号池和调用健康。"],
       projects: ["项目", "切换项目并管理这个项目自己的上游账号池。"],
-      keys: ["密钥", "管理全局 API 凭证及访问权限。"],
-      settings: ["设置", "管理全局路由策略与系统设置。"],
+      settings: ["设置", "管理全局密钥、开放模型、备份和系统策略。"],
     };
     let projects = [];
     let accounts = [];
     let summary = {};
     let projectStats = [];
     let publicStatus = {};
-    let currentModels = [];
     let discoveredModels = [];
     let globalKeys = [];
     let editingKeyId = null;
     let editingProjectId = null;
     let selectedProjectId = localStorage.getItem("hyhub-selected-project") || "default-rt";
+    let dashboardScope = localStorage.getItem("hyhub-dashboard-scope") || "all";
+    let dashboardProjectId = localStorage.getItem("hyhub-dashboard-project") || selectedProjectId;
+    let modelProjectId = localStorage.getItem("hyhub-model-project") || selectedProjectId;
     let selectedAccountIds = new Set();
     els.token.value = localStorage.getItem("hyhub-admin-token") || "";
     els.baseUrl.textContent = window.location.origin + "/v1";
@@ -1456,6 +1597,23 @@ function renderAdminPageV2(): string {
     function projectKeyCount(projectId) {
       return globalKeys.filter((key) => key.projects === "ALL" || (Array.isArray(key.projects) && key.projects.includes(projectId))).length;
     }
+    function projectName(id) {
+      const project = projects.find((item) => item.id === id);
+      return project ? project.name : id;
+    }
+    function selectedModelProject() {
+      return projects.find((project) => project.id === modelProjectId) || selectedProject() || projects[0] || null;
+    }
+    function stripProjectPrefix(projectId, model) {
+      const text = String(model || "").trim();
+      const prefix = projectId + "/";
+      return text.startsWith(prefix) ? text.slice(prefix.length).trim() : text;
+    }
+    function displayProjectScope(scope) {
+      return scope === "ALL"
+        ? '<span class="tag ok">全部项目</span>'
+        : (scope || []).map((id) => '<span class="tag">' + escapeHtml(projectName(id)) + '</span>').join("");
+    }
     function parseHeaders() {
       const raw = document.getElementById("account-extra-headers").value.trim();
       return raw ? JSON.parse(raw) : undefined;
@@ -1480,11 +1638,12 @@ function renderAdminPageV2(): string {
       els.menuToggle.setAttribute("aria-expanded", "false");
     }
     function renderProjectSwitcher() {
+      document.getElementById("project-count-pill").textContent = projects.length + " 个";
       els.projectSwitcher.innerHTML = projects.length ? projects.map((project) => {
         const itemSummary = projectStat(project.id);
         const isActive = project.id === selectedProjectId;
         return '<div class="project-item-wrap ' + (isActive ? 'active' : '') + '">' +
-          '<button class="project-item" style="flex:1" onclick="selectProject(\\'' + escapeHtml(project.id) + '\\')"><b>' + escapeHtml(project.name) + '</b><span class="meta"><span class="mono">' + escapeHtml(project.id) + '</span><span>' + (itemSummary.available || 0) + '/' + (project.accountCount || 0) + '</span></span></button>' +
+          '<button class="project-item" style="flex:1" onclick="selectProject(\\'' + escapeHtml(project.id) + '\\', true)"><b>' + escapeHtml(project.name) + '</b><span class="meta"><span class="mono">' + escapeHtml(project.id) + '</span><span>' + (itemSummary.available || 0) + '/' + (project.accountCount || 0) + '</span></span></button>' +
           '<button class="project-dots" onclick="openProjectDropdown(event, \\'' + escapeHtml(project.id) + '\\')">⋮</button>' +
           '</div>';
       }).join("") : '<div class="empty">暂无项目。</div>';
@@ -1493,21 +1652,33 @@ function renderAdminPageV2(): string {
       const project = selectedProject();
       const itemSummary = project ? projectStat(project.id) : {};
       const label = project ? project.name + ' · ' + project.id : '未选择项目';
-      els.currentProjectPill.textContent = label;
+      els.currentProjectPill.textContent = "项目工作区：" + label;
       document.getElementById("workspace-project-name").textContent = project ? project.name : "当前项目";
       document.getElementById("selected-project-tag").textContent = project ? project.id : "未选择";
       document.getElementById("workspace-project-meta").textContent = project
         ? "账号 " + (project.accountCount || 0) + "，可用 " + (itemSummary.available || 0) + "，待处理 " + (itemSummary.actionRequired || 0) + "，API Key " + projectKeyCount(project.id)
         : "";
     }
+    function renderDashboardControls() {
+      if (!projects.some((project) => project.id === dashboardProjectId)) dashboardProjectId = projects[0]?.id || selectedProjectId;
+      els.dashboardScope.value = dashboardScope;
+      els.dashboardProjectScope.innerHTML = projects.map((project) => '<option value="' + escapeHtml(project.id) + '">' + escapeHtml(project.name) + '</option>').join("");
+      els.dashboardProjectScope.value = dashboardProjectId;
+      els.dashboardProjectScope.disabled = dashboardScope !== "project";
+    }
     function renderDashboard() {
-      document.getElementById("dash-projects").textContent = projects.length;
-      document.getElementById("dash-accounts").textContent = summary.total || 0;
-      document.getElementById("dash-available").textContent = summary.available || 0;
-      document.getElementById("dash-action").textContent = summary.actionRequired || 0;
-      document.getElementById("dash-calls").textContent = fmt(summary.calls || 0);
-      document.getElementById("dash-errors").textContent = fmt(summary.errors || 0);
-      const dashboardItems = projectStats.length ? projectStats : projects.map((project) => ({ project, summary: {} }));
+      renderDashboardControls();
+      const selectedStatsItem = projectStats.find((item) => item.project?.id === dashboardProjectId);
+      const viewSummary = dashboardScope === "project" ? (selectedStatsItem?.summary || {}) : summary;
+      document.getElementById("dash-projects").textContent = dashboardScope === "project" ? (selectedStatsItem ? 1 : 0) : projects.length;
+      document.getElementById("dash-accounts").textContent = viewSummary.total || 0;
+      document.getElementById("dash-available").textContent = viewSummary.available || 0;
+      document.getElementById("dash-action").textContent = viewSummary.actionRequired || 0;
+      document.getElementById("dash-calls").textContent = fmt(viewSummary.calls || 0);
+      document.getElementById("dash-errors").textContent = fmt(viewSummary.errors || 0);
+      const dashboardItems = dashboardScope === "project" && selectedStatsItem
+        ? [selectedStatsItem]
+        : projectStats.length ? projectStats : projects.map((project) => ({ project, summary: {} }));
       els.dashboardProjects.innerHTML = dashboardItems.length ? dashboardItems
         .slice().sort((a, b) => (b.summary?.calls || 0) - (a.summary?.calls || 0) || (b.summary?.actionRequired || 0) - (a.summary?.actionRequired || 0))
         .map((item) => {
@@ -1517,7 +1688,9 @@ function renderAdminPageV2(): string {
           return '<div class="list-item" onclick="selectProject(\\'' + escapeHtml(project.id) + '\\', true)"><div class="row"><b>' + escapeHtml(project.name) + '</b><span class="tag ' + (project.enabled ? 'ok' : 'warn') + '">' + (project.enabled ? '启用' : '停用') + '</span></div><div class="muted mono">' + escapeHtml(project.id) + '</div><div class="muted">账号 ' + (project.accountCount || 0) + ' / 可用 ' + (itemSummary.available || 0) + ' / 待处理 ' + (itemSummary.actionRequired || 0) + '</div><div class="muted">调用 ' + fmt(itemSummary.calls || 0) + ' / 失败 ' + fmt(itemSummary.errors || 0) + ' / 成功率 ' + rate + '</div></div>';
         })
         .join("") : '<div class="empty">暂无项目。</div>';
-      const modelHealth = publicStatus.modelHealth || [];
+      const modelHealth = dashboardScope === "project"
+        ? (publicStatus.modelHealth || []).filter((item) => String(item.model || "").startsWith(dashboardProjectId + "/"))
+        : publicStatus.modelHealth || [];
       els.modelHealth.innerHTML = modelHealth.length ? modelHealth.map((item) => {
         const pct = Math.max(2, Number(item.successRate || 0));
         return '<div class="bar"><span class="mono">' + escapeHtml(item.model) + '</span><div class="track"><i style="width:' + pct + '%"></i></div><span class="muted">' + (item.calls || 0) + ' 次</span></div>';
@@ -1526,7 +1699,7 @@ function renderAdminPageV2(): string {
     function renderProjects() {
       renderProjectSwitcher();
       renderCurrentProjectContext();
-      renderKeys();
+      renderSettings();
     }
     function renderAccounts() {
       selectedAccountIds = new Set([...selectedAccountIds].filter((id) => accounts.some((account) => account.id === id)));
@@ -1534,12 +1707,26 @@ function renderAdminPageV2(): string {
         els.accountsTable.innerHTML = '<div class="empty">当前项目还没有账号。</div>';
         return;
       }
-      els.accountsTable.innerHTML = '<div class="table-wrap"><table><thead><tr><th></th><th>账号</th><th>状态</th><th>真实调用</th><th>检测</th><th>操作</th></tr></thead><tbody>' + accounts.map((account) => {
+      els.accountsTable.innerHTML = '<div class="table-wrap"><table class="accounts-table"><thead><tr><th></th><th>名称</th><th>账号 ID</th><th>Base URL</th><th>状态</th><th>权重</th><th>调用</th><th>成功</th><th>失败</th><th>成功率</th><th>检测</th><th>最后检测</th><th>操作</th></tr></thead><tbody>' + accounts.map((account) => {
         const state = stateOf(account);
         const successRate = account.stats?.calls ? Math.round(((account.stats.successes || 0) / account.stats.calls) * 100) + "%" : "--";
         const lastCheck = account.health?.lastCheckedAt ? new Date(account.health.lastCheckedAt).toLocaleString() : "未检测";
         const tag = state === "available" ? '<span class="tag ok">可用</span>' : state === "attention" ? '<span class="tag bad">需处理</span>' : '<span class="tag warn">停用</span>';
-        return '<tr><td><input type="checkbox" data-check="' + escapeHtml(account.id) + '" ' + (selectedAccountIds.has(account.id) ? 'checked' : '') + ' /></td><td><b>' + escapeHtml(account.label) + '</b><div class="muted mono">' + escapeHtml(account.id) + '</div><div class="muted mono">' + escapeHtml(account.baseUrl) + '</div></td><td>' + tag + '<div class="muted">权重 ' + (account.weight || 1) + '</div></td><td><div class="mono">' + (account.stats?.calls || 0) + ' 次</div><div class="muted">成功 ' + (account.stats?.successes || 0) + ' / 失败 ' + (account.stats?.errors || 0) + ' / ' + successRate + '</div></td><td><div class="mono">' + (account.health?.checks || 0) + ' 次</div><div class="muted">' + lastCheck + '</div></td><td><div class="actions"><button class="ghost" onclick="editAccount(\\'' + escapeHtml(account.id) + '\\')">编辑</button><button class="ghost" onclick="testAccount(\\'' + escapeHtml(account.id) + '\\')">检测</button><button class="ghost" onclick="toggleAccount(\\'' + escapeHtml(account.id) + '\\',' + (!account.enabled) + ')">' + (account.enabled ? '停用' : '启用') + '</button><button class="danger" onclick="removeAccount(\\'' + escapeHtml(account.id) + '\\')">删除</button></div></td></tr>';
+        return '<tr>' +
+          '<td><input type="checkbox" data-check="' + escapeHtml(account.id) + '" ' + (selectedAccountIds.has(account.id) ? 'checked' : '') + ' /></td>' +
+          '<td><span class="clip" title="' + escapeHtml(account.label) + '">' + escapeHtml(account.label) + '</span></td>' +
+          '<td><span class="clip mono" title="' + escapeHtml(account.id) + '">' + escapeHtml(account.id) + '</span></td>' +
+          '<td><span class="clip url mono" title="' + escapeHtml(account.baseUrl) + '">' + escapeHtml(account.baseUrl) + '</span></td>' +
+          '<td>' + tag + '</td>' +
+          '<td class="mono">' + (account.weight || 1) + '</td>' +
+          '<td class="mono">' + (account.stats?.calls || 0) + '</td>' +
+          '<td class="mono">' + (account.stats?.successes || 0) + '</td>' +
+          '<td class="mono">' + (account.stats?.errors || 0) + '</td>' +
+          '<td class="mono">' + successRate + '</td>' +
+          '<td class="mono">' + (account.health?.checks || 0) + '</td>' +
+          '<td><span class="clip" title="' + escapeHtml(lastCheck) + '">' + escapeHtml(lastCheck) + '</span></td>' +
+          '<td><div class="actions"><button class="ghost" onclick="editAccount(\\'' + escapeHtml(account.id) + '\\')">编辑</button><button class="ghost" onclick="testAccount(\\'' + escapeHtml(account.id) + '\\')">检测</button><button class="ghost" onclick="toggleAccount(\\'' + escapeHtml(account.id) + '\\',' + (!account.enabled) + ')">' + (account.enabled ? '停用' : '启用') + '</button><button class="danger" onclick="removeAccount(\\'' + escapeHtml(account.id) + '\\')">删除</button></div></td>' +
+          '</tr>';
       }).join("") + '</tbody></table></div>';
       document.querySelectorAll("[data-check]").forEach((input) => input.addEventListener("change", (event) => {
         const id = event.target.getAttribute("data-check");
@@ -1553,9 +1740,25 @@ function renderAdminPageV2(): string {
         return;
       }
       els.keysTable.innerHTML = '<div class="table-wrap"><table><thead><tr><th>凭证名称</th><th>API Key</th><th>访问权限</th><th>操作</th></tr></thead><tbody>' + globalKeys.map((key) => {
-        const allowed = Array.isArray(key.projects) ? key.projects.map(p => '<span class="tag">' + escapeHtml(p) + '</span>').join('') : '<span class="tag ok">ALL</span>';
+        const allowed = displayProjectScope(key.projects);
         return '<tr><td><b>' + escapeHtml(key.name || "未命名") + '</b><div class="muted mono">' + escapeHtml(key.id) + '</div></td><td><div class="mono">' + escapeHtml(key.key) + '</div></td><td><div class="toolbar">' + allowed + '</div></td><td><div class="actions"><button class="ghost" onclick="copyKey(\\'' + escapeHtml(key.key) + '\\')">复制</button><button class="ghost" onclick="editKey(\\'' + escapeHtml(key.id) + '\\')">编辑</button><button class="danger" onclick="deleteKey(\\'' + escapeHtml(key.id) + '\\')">删除</button></div></td></tr>';
       }).join("") + '</tbody></table></div>';
+    }
+    function renderModelSettingsSummary() {
+      if (!projects.some((project) => project.id === modelProjectId)) modelProjectId = selectedProjectId;
+      els.modelProjectSelect.innerHTML = projects.map((project) => '<option value="' + escapeHtml(project.id) + '">' + escapeHtml(project.name) + '</option>').join("");
+      els.modelProjectSelect.value = modelProjectId;
+      const project = selectedModelProject();
+      if (!project) {
+        els.modelSettingsSummary.innerHTML = '<div class="empty">暂无项目。</div>';
+        return;
+      }
+      const models = Object.keys(project.modelMapping || {}).filter((model) => !(project.disabledModels || []).includes(model));
+      els.modelSettingsSummary.innerHTML = '<div class="list-item"><div class="row"><b>' + escapeHtml(project.name) + '</b><span class="tag">' + models.length + ' 个开放模型</span></div><div class="muted mono">' + escapeHtml(project.id) + '</div><div class="toolbar">' + (models.length ? models.slice(0, 8).map((model) => '<span class="tag mono">' + escapeHtml(project.id + '/' + model) + '</span>').join('') : '<span class="muted">还没有配置开放模型，可先拉取模型列表。</span>') + '</div></div>';
+    }
+    function renderSettings() {
+      renderKeys();
+      renderModelSettingsSummary();
     }
     async function refreshAll() {
       const verify = await api("/admin/verify");
@@ -1563,12 +1766,14 @@ function renderAdminPageV2(): string {
       summary = verify.summary || {};
       projectStats = verify.projectStats || [];
       if (!projects.some((project) => project.id === selectedProjectId)) selectedProjectId = projects[0]?.id || "default-rt";
+      if (!projects.some((project) => project.id === dashboardProjectId)) dashboardProjectId = selectedProjectId;
+      if (!projects.some((project) => project.id === modelProjectId)) modelProjectId = selectedProjectId;
       await loadProjectAccounts();
       await Promise.all([loadRouting(), loadPublicStatus(), loadKeys()]);
       renderDashboard();
       renderProjects();
       renderAccounts();
-      renderKeys();
+      renderSettings();
     }
     async function loadKeys() {
       const data = await api("/admin/keys");
@@ -1623,8 +1828,6 @@ function renderAdminPageV2(): string {
       document.getElementById("project-id").disabled = !!project;
       document.getElementById("project-name").value = project?.name || "";
       document.getElementById("project-enabled").checked = project?.enabled !== false;
-      document.getElementById("project-model-mapping").value = project?.modelMapping ? JSON.stringify(project.modelMapping, null, 2) : "";
-      document.getElementById("project-disabled-models").value = project?.disabledModels?.length ? project.disabledModels.join("\\n") : "";
       els.projectModal.classList.remove("hidden");
     }
     function closeProjectModal() {
@@ -1658,18 +1861,10 @@ function renderAdminPageV2(): string {
       try {
         const id = document.getElementById("project-id").value.trim();
         const existing = !!editingProjectId;
-        let modelMapping = {};
-        try {
-          const rawMap = document.getElementById("project-model-mapping").value.trim();
-          if (rawMap) modelMapping = JSON.parse(rawMap);
-        } catch(e) { throw new Error("模型映射 JSON 格式错误"); }
-        const disabledModels = document.getElementById("project-disabled-models").value.split(/[\\n,]+/).map(m => m.trim()).filter(Boolean);
         const payload = { 
           id: existing ? undefined : id || undefined, 
           name: document.getElementById("project-name").value.trim() || undefined, 
-          enabled: document.getElementById("project-enabled").checked,
-          modelMapping,
-          disabledModels
+          enabled: document.getElementById("project-enabled").checked
         };
         const data = await api(existing ? "/admin/projects/" + encodeURIComponent(editingProjectId) : "/admin/projects", { method: existing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
         selectedProjectId = data.project.id;
@@ -1763,13 +1958,14 @@ function renderAdminPageV2(): string {
       editingKeyId = keyRecord?.id || null;
       document.getElementById("key-modal-title").textContent = keyRecord ? "编辑凭证" : "创建新凭证";
       document.getElementById("key-name").value = keyRecord?.name || "";
-      const select = document.getElementById("key-projects");
-      select.innerHTML = '<option value="ALL">所有项目 (ALL)</option>' + projects.map(p => '<option value="' + escapeHtml(p.id) + '">' + escapeHtml(p.name || p.id) + '</option>').join('');
       const allowed = keyRecord ? keyRecord.projects : "ALL";
-      for (const option of select.options) {
-        if (allowed === "ALL") option.selected = option.value === "ALL";
-        else option.selected = allowed.includes(option.value);
-      }
+      const allowedList = allowed === "ALL" ? [] : allowed;
+      const single = document.getElementById("key-single-project");
+      single.innerHTML = projects.map((project) => '<option value="' + escapeHtml(project.id) + '">' + escapeHtml(project.name || project.id) + '</option>').join('');
+      single.value = allowedList[0] || selectedProjectId;
+      document.getElementById("key-project-checks").innerHTML = projects.map((project) => '<label><input type="checkbox" value="' + escapeHtml(project.id) + '" ' + (allowedList.includes(project.id) ? 'checked' : '') + ' /> <span>' + escapeHtml(project.name || project.id) + '<span class="muted mono"> · ' + escapeHtml(project.id) + '</span></span></label>').join('');
+      const scope = allowed === "ALL" ? "ALL" : allowedList.length <= 1 ? "SINGLE" : "MULTI";
+      document.querySelectorAll('input[name="key-scope"]').forEach((input) => input.checked = input.value === scope);
       els.keyModal.classList.remove("hidden");
     }
     function closeKeyModal() {
@@ -1779,10 +1975,13 @@ function renderAdminPageV2(): string {
     async function saveKey() {
       try {
         const name = document.getElementById("key-name").value.trim() || "未命名";
-        const select = document.getElementById("key-projects");
-        const selected = [...select.options].filter(o => o.selected).map(o => o.value);
-        const allowAll = selected.includes("ALL");
-        const payload = { name, projects: allowAll ? "ALL" : selected.length ? selected : ["default-rt"] };
+        const scope = document.querySelector('input[name="key-scope"]:checked')?.value || "ALL";
+        const selected = [...document.querySelectorAll("#key-project-checks input:checked")].map((input) => input.value);
+        const single = document.getElementById("key-single-project").value || selectedProjectId;
+        const payload = {
+          name,
+          projects: scope === "ALL" ? "ALL" : scope === "SINGLE" ? [single] : selected.length ? selected : [single],
+        };
         const existing = !!editingKeyId;
         const data = await api(existing ? "/admin/keys/" + encodeURIComponent(editingKeyId) : "/admin/keys", { method: existing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
         if (!existing) await navigator.clipboard.writeText(data.key.key).catch(() => {});
@@ -1792,21 +1991,114 @@ function renderAdminPageV2(): string {
       } catch (error) { status(els.keyStatus, error.message, true); }
     }
     window.editKey = function(id) { openKeyModal(globalKeys.find(k => k.id === id)); };
+    function renderModelPickList() {
+      const project = selectedModelProject();
+      if (!project) {
+        document.getElementById("model-discover-list").innerHTML = '<div class="empty">暂无项目。</div>';
+        return;
+      }
+      const mapping = project.modelMapping || {};
+      const disabled = new Set(project.disabledModels || []);
+      const configured = new Set(Object.keys(mapping).filter((model) => !disabled.has(model)));
+      const source = discoveredModels.length
+        ? discoveredModels
+        : Object.keys(mapping).map((model) => ({ model, publicModel: project.id + "/" + model, accounts: [] }));
+      document.getElementById("model-mapping-editor").value = JSON.stringify(mapping, null, 2);
+      document.getElementById("disabled-models-editor").value = (project.disabledModels || []).join("\\n");
+      document.getElementById("model-discover-list").innerHTML = source.length ? source.map((item) => {
+        const rawModel = stripProjectPrefix(project.id, item.model || item.publicModel);
+        const publicModel = project.id + "/" + rawModel;
+        const checked = configured.size ? configured.has(rawModel) : true;
+        const accountsText = item.accounts?.length ? "来自 " + item.accounts.join("、") : "已配置";
+        return '<label class="model-pick"><input type="checkbox" data-model-pick="' + escapeHtml(rawModel) + '" ' + (checked ? 'checked' : '') + ' /><span><b class="mono">' + escapeHtml(publicModel) + '</b><br><span class="muted">' + escapeHtml(accountsText) + '</span></span></label>';
+      }).join("") : '<div class="empty">还没有模型。点击“拉取模型列表”从当前项目账号池读取。</div>';
+    }
+    async function openModelModal() {
+      const project = selectedModelProject();
+      if (!project) return status(els.modelSettingsStatus, "先创建项目。", true);
+      discoveredModels = [];
+      document.getElementById("model-modal-project").textContent = project.name + " · " + project.id;
+      renderModelPickList();
+      els.modelModal.classList.remove("hidden");
+    }
+    function closeModelModal() {
+      discoveredModels = [];
+      els.modelModal.classList.add("hidden");
+    }
+    async function discoverModels() {
+      const project = selectedModelProject();
+      if (!project) return;
+      try {
+        status(els.modelSettingsStatus, "正在从项目账号池拉取模型...");
+        const data = await api("/admin/projects/" + encodeURIComponent(project.id) + "/models/discover", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ limit: 12 }) });
+        discoveredModels = data.recommendations || [];
+        renderModelPickList();
+        status(els.modelSettingsStatus, "已扫描 " + (data.scanned || 0) + " 个账号，发现 " + discoveredModels.length + " 个模型。");
+      } catch (error) { status(els.modelSettingsStatus, error.message, true); }
+    }
+    async function saveModels() {
+      const project = selectedModelProject();
+      if (!project) return;
+      try {
+        let mapping = {};
+        const pickInputs = [...document.querySelectorAll("[data-model-pick]")];
+        const checked = pickInputs.filter((input) => input.checked).map((input) => input.getAttribute("data-model-pick")).filter(Boolean);
+        if (pickInputs.length) {
+          checked.forEach((model) => {
+            const publicModel = stripProjectPrefix(project.id, model);
+            mapping[publicModel] = project.modelMapping?.[publicModel] || publicModel;
+          });
+        } else {
+          const rawMap = document.getElementById("model-mapping-editor").value.trim();
+          if (rawMap) mapping = JSON.parse(rawMap);
+        }
+        const disabledModels = document.getElementById("disabled-models-editor").value.split(/[\\n,]+/).map((item) => stripProjectPrefix(project.id, item)).filter(Boolean);
+        await api("/admin/projects/" + encodeURIComponent(project.id) + "/models", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ modelMapping: mapping, disabledModels }) });
+        closeModelModal();
+        await refreshAll();
+        status(els.modelSettingsStatus, "开放模型已保存。");
+      } catch (error) { status(els.modelSettingsStatus, error.message, true); }
+    }
     async function saveRouting() {
       try {
         await api("/admin/routing", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ maxRetryAccounts: Number(document.getElementById("max-retry-accounts").value || 3), disableOnFailure: document.getElementById("disable-on-failure").checked }) });
         status(els.routingStatus, "路由策略已保存。");
       } catch (error) { status(els.routingStatus, error.message, true); }
     }
-    async function exportAccounts() {
-      const data = await api(projectPath("/accounts/export"));
+    function downloadJson(filename, data) {
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = selectedProjectId + "-accounts.json";
+      link.download = filename;
       link.click();
       URL.revokeObjectURL(url);
+    }
+    async function exportBackup() {
+      const data = await api("/admin/backup");
+      downloadJson("hyhub-backup-" + new Date().toISOString().slice(0, 10) + ".json", data);
+      closeOpsModal();
+      status(els.opsStatus, "全量备份已导出。");
+    }
+    async function restoreBackup() {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "application/json";
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        if (!confirm("确认恢复这个备份？当前项目、账号池、API Key 和统计会被备份内容覆盖。")) return;
+        const payload = JSON.parse(await file.text());
+        const data = await api("/admin/backup/restore", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+        await refreshAll();
+        closeOpsModal();
+        status(els.opsStatus, "恢复完成：项目 " + (data.projects || 0) + "，账号 " + (data.accounts || 0) + "，密钥 " + (data.apiKeys || 0) + "。");
+      };
+      input.click();
+    }
+    async function exportAccounts() {
+      const data = await api(projectPath("/accounts/export"));
+      downloadJson(selectedProjectId + "-accounts.json", data);
       closeOpsModal();
       status(els.opsStatus, "账号已导出。");
     }
@@ -1842,8 +2134,10 @@ function renderAdminPageV2(): string {
     els.token.addEventListener("keydown", (event) => { if (event.key === "Enter") verifyLogin(); });
     document.getElementById("reload").addEventListener("click", refreshAll);
     document.getElementById("logout").addEventListener("click", () => { localStorage.removeItem("hyhub-admin-token"); location.reload(); });
+    document.getElementById("open-project-workspace").addEventListener("click", () => setPage("projects"));
     document.getElementById("new-project").addEventListener("click", () => openProjectModal(null));
     document.getElementById("edit-project").addEventListener("click", () => openProjectModal(selectedProject()));
+    document.getElementById("open-project-data-modal").addEventListener("click", openOpsModal);
     document.getElementById("close-project-modal").addEventListener("click", closeProjectModal);
     document.getElementById("cancel-project-modal").addEventListener("click", closeProjectModal);
     els.projectModal.addEventListener("click", (event) => { if (event.target === els.projectModal) closeProjectModal(); });
@@ -1856,20 +2150,42 @@ function renderAdminPageV2(): string {
     els.opsModal.addEventListener("click", (event) => { if (event.target === els.opsModal) closeOpsModal(); });
     document.getElementById("close-key-modal").addEventListener("click", closeKeyModal);
     els.keyModal.addEventListener("click", (event) => { if (event.target === els.keyModal) closeKeyModal(); });
-    document.addEventListener("keydown", (event) => { if (event.key === "Escape") { closeProjectModal(); closeAccountModal(); closeKeyModal(); closeOpsModal(); } });
+    document.getElementById("open-model-modal").addEventListener("click", openModelModal);
+    document.getElementById("close-model-modal").addEventListener("click", closeModelModal);
+    els.modelModal.addEventListener("click", (event) => { if (event.target === els.modelModal) closeModelModal(); });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") { closeProjectModal(); closeAccountModal(); closeKeyModal(); closeModelModal(); closeOpsModal(); } });
     document.getElementById("save-project").addEventListener("click", saveProject);
     document.getElementById("save-account").addEventListener("click", saveAccount);
     document.getElementById("save-key").addEventListener("click", saveKey);
+    document.getElementById("discover-models").addEventListener("click", discoverModels);
+    document.getElementById("save-models").addEventListener("click", saveModels);
     document.getElementById("test-project-accounts").addEventListener("click", async () => { const data = await api(projectPath("/accounts/test-all"), { method: "POST" }); status(els.accountStatus, "检测完成：" + (data.okCount || 0) + "/" + (data.total || 0) + " 可用。"); await refreshAll(); });
     document.getElementById("batch-enable").addEventListener("click", () => batchToggle(true));
     document.getElementById("batch-disable").addEventListener("click", () => batchToggle(false));
     document.getElementById("create-key").addEventListener("click", () => openKeyModal(null));
     document.getElementById("copy-base-url").addEventListener("click", async () => { await navigator.clipboard.writeText(window.location.origin + "/v1"); status(els.keyStatus, "Base URL 已复制。"); });
     document.getElementById("save-routing").addEventListener("click", saveRouting);
+    document.getElementById("export-backup").addEventListener("click", exportBackup);
+    document.getElementById("restore-backup").addEventListener("click", restoreBackup);
     document.getElementById("export-accounts").addEventListener("click", exportAccounts);
     document.getElementById("import-accounts").addEventListener("click", importAccounts);
     document.getElementById("reset-stats").addEventListener("click", resetStats);
     document.getElementById("api-test-model").addEventListener("change", (event) => localStorage.setItem("hyhub-api-test-model", event.target.value));
+    els.dashboardScope.addEventListener("change", (event) => {
+      dashboardScope = event.target.value;
+      localStorage.setItem("hyhub-dashboard-scope", dashboardScope);
+      renderDashboard();
+    });
+    els.dashboardProjectScope.addEventListener("change", (event) => {
+      dashboardProjectId = event.target.value;
+      localStorage.setItem("hyhub-dashboard-project", dashboardProjectId);
+      renderDashboard();
+    });
+    els.modelProjectSelect.addEventListener("change", (event) => {
+      modelProjectId = event.target.value;
+      localStorage.setItem("hyhub-model-project", modelProjectId);
+      renderModelSettingsSummary();
+    });
     if (getToken()) verifyLogin();
     else status(els.gateStatus, "先输入管理员密钥。");
   </script>
@@ -2307,7 +2623,10 @@ export class RouterState extends DurableObject<Env> {
     return account;
   }
 
-  private async pickCandidateAccount(candidates: { account: AccountRecord; project: ProjectRecord; upstreamModel: string }[], excluded: Set<string> = new Set()): Promise<{ account: AccountRecord; project: ProjectRecord; upstreamModel: string } | null> {
+  private async pickCandidateAccount(
+    candidates: { account: AccountRecord; project: ProjectRecord; upstreamModel: string; statsModel: string }[],
+    excluded: Set<string> = new Set(),
+  ): Promise<{ account: AccountRecord; project: ProjectRecord; upstreamModel: string; statsModel: string } | null> {
     const now = Date.now();
     const enabled = candidates.filter((item) => item.account.enabled && !excluded.has(item.account.id));
     const healthy = enabled.filter((item) => (item.account.unhealthyUntil ?? 0) <= now);
@@ -2351,9 +2670,8 @@ export class RouterState extends DurableObject<Env> {
     if (allowedProjects.length === 0) return json({ error: "No available projects for this key" }, { status: 403 });
 
     if (request.method === "GET" && requestUrl.pathname === "/v1/models") {
-      const models = [...new Set(allowedProjects.flatMap((project) => (
-        Object.keys(project.modelMapping ?? {}).filter((model) => !project.disabledModels.includes(model))
-      )))].sort((a, b) => a.localeCompare(b));
+      const models = [...new Set(allowedProjects.flatMap((project) => projectPublicModels(project)))]
+        .sort((a, b) => a.localeCompare(b));
       return json({
         object: "list",
         data: models.map((id) => ({ id, object: "model", owned_by: "hyhub" })),
@@ -2377,15 +2695,18 @@ export class RouterState extends DurableObject<Env> {
       }
     }
 
+    const requested = clientModel ? parseProjectModel(clientModel) : { projectId: null, model: "", prefixed: false };
     const allAccounts = await this.getAccounts();
-    const candidates: { account: AccountRecord; project: ProjectRecord; upstreamModel: string }[] = [];
+    const candidates: { account: AccountRecord; project: ProjectRecord; upstreamModel: string; statsModel: string }[] = [];
     
     for (const project of allowedProjects) {
-      if (clientModel && project.disabledModels.includes(clientModel)) continue;
-      const upstreamModel = clientModel ? (project.modelMapping[clientModel] || clientModel) : "";
+      if (requested.prefixed && requested.projectId !== project.id) continue;
+      if (clientModel && project.disabledModels.includes(requested.model)) continue;
+      const upstreamModel = clientModel ? (project.modelMapping[requested.model] || requested.model) : "";
+      const statsModel = clientModel ? prefixProjectModel(project.id, requested.model) : "unknown";
       const accounts = allAccounts.filter(a => a.projectId === project.id && a.enabled);
       for (const account of accounts) {
-        candidates.push({ account, project, upstreamModel });
+        candidates.push({ account, project, upstreamModel, statsModel });
       }
     }
 
@@ -2435,7 +2756,7 @@ export class RouterState extends DurableObject<Env> {
           excluded.add(account.id);
           await this.markUnhealthy(account.id);
           await this.recordProxyResult(account.id, upstream.status, Date.now() - startedAt, `HTTP ${upstream.status}`);
-          await this.recordModelHourlyResult(clientModel || "unknown", upstream.status, Date.now() - startedAt);
+          await this.recordModelHourlyResult(candidate.statsModel, upstream.status, Date.now() - startedAt);
           if (routing.disableOnFailure) await this.disableAccount(account.id);
           if (excluded.size >= candidates.length || attempts >= maxAttempts) {
             return this.withProxyHeaders(upstream, account.id);
@@ -2444,14 +2765,14 @@ export class RouterState extends DurableObject<Env> {
         }
         await this.markHealthy(account.id);
         await this.recordProxyResult(account.id, upstream.status, Date.now() - startedAt);
-        await this.recordModelHourlyResult(clientModel || "unknown", upstream.status, Date.now() - startedAt);
+        await this.recordModelHourlyResult(candidate.statsModel, upstream.status, Date.now() - startedAt);
         return this.withProxyHeaders(upstream, account.id);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         excluded.add(account.id);
         await this.markUnhealthy(account.id);
         await this.recordProxyResult(account.id, 502, Date.now() - startedAt, message);
-        await this.recordModelHourlyResult(clientModel || "unknown", 502, Date.now() - startedAt);
+        await this.recordModelHourlyResult(candidate.statsModel, 502, Date.now() - startedAt);
         if (routing.disableOnFailure) await this.disableAccount(account.id);
         if (excluded.size >= candidates.length || attempts >= maxAttempts) {
           return json({ error: "All accounts failed", details: message }, { status: 502 });
@@ -2488,12 +2809,83 @@ export class RouterState extends DurableObject<Env> {
       });
     }
 
+    if (pathname === "/admin/backup" && request.method === "GET") {
+      const [projects, accounts, apiKeys, routing, stats, health, modelHourly] = await Promise.all([
+        this.getProjects(),
+        this.getAccounts(),
+        this.getApiKeys(),
+        this.getRoutingSettings(),
+        this.getStatsMap(),
+        this.getHealthMap(),
+        this.getModelHourlyStats(),
+      ]);
+      return json({
+        version: 1,
+        exportedAt: Date.now(),
+        projects,
+        accounts,
+        apiKeys,
+        routing,
+        stats,
+        health,
+        modelHourly,
+      });
+    }
+
+    if (pathname === "/admin/backup/restore" && request.method === "POST") {
+      const payload = await readJsonBody<{
+        projects?: ProjectInput[];
+        accounts?: AccountInput[];
+        apiKeys?: Partial<ApiKeyRecord>[];
+        routing?: Partial<RoutingSettings>;
+        stats?: Record<string, AccountStat>;
+        health?: Record<string, AccountHealth>;
+        modelHourly?: ModelHourlyStats;
+      }>(request);
+
+      let projects = Array.isArray(payload.projects)
+        ? payload.projects.map((project) => sanitizeProjectInput(project))
+        : await this.getProjects();
+      if (!projects.some((project) => project.id === DEFAULT_PROJECT_ID)) {
+        projects = [createDefaultProject(), ...projects];
+      }
+      const projectIds = new Set(projects.map((project) => project.id));
+
+      const accounts = Array.isArray(payload.accounts)
+        ? payload.accounts.map((account) => {
+          const projectId = account.projectId && projectIds.has(account.projectId) ? account.projectId : DEFAULT_PROJECT_ID;
+          return sanitizeAccountInput(account, projectId);
+        })
+        : await this.getAccounts();
+
+      const apiKeys = Array.isArray(payload.apiKeys)
+        ? payload.apiKeys.map((key) => restoreApiKeyRecord(key, projectIds)).filter((key): key is ApiKeyRecord => !!key)
+        : await this.getApiKeys();
+
+      await Promise.all([
+        this.saveProjects(projects),
+        this.saveAccounts(accounts),
+        this.saveApiKeys(apiKeys),
+      ]);
+      if (payload.routing) {
+        await this.saveRoutingSettings({
+          maxRetryAccounts: normalizeWeight(payload.routing.maxRetryAccounts),
+          disableOnFailure: payload.routing.disableOnFailure === true,
+        });
+      }
+      if (payload.stats && typeof payload.stats === "object") await this.saveStatsMap(payload.stats);
+      if (payload.health && typeof payload.health === "object") await this.saveHealthMap(payload.health);
+      if (payload.modelHourly && typeof payload.modelHourly === "object") await this.saveModelHourlyStats(payload.modelHourly);
+      return json({ ok: true, projects: projects.length, accounts: accounts.length, apiKeys: apiKeys.length });
+    }
+
     const legacyAccountsMatch = pathname.match(/^\/admin\/accounts(?:\/([^/]+))?(?:\/(test))?$/);
     const projectAccountsRootMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/accounts$/);
     const projectAccountsBatchMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/accounts\/batch$/);
     const projectAccountsTestAllMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/accounts\/test-all$/);
     const projectAccountItemMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/accounts\/([^/]+)$/);
     const projectAccountTestMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/accounts\/([^/]+)\/test$/);
+    const projectModelsMatch = pathname.match(/^\/admin\/projects\/([^/]+)\/models$/);
 
     const listProjectId = projectAccountsRootMatch?.[1]
       ? decodeURIComponent(projectAccountsRootMatch[1])
@@ -2614,6 +3006,40 @@ export class RouterState extends DurableObject<Env> {
     const projectMatch = pathname.match(/^\/admin\/projects\/([^/]+)$/);
     const keyMatch = pathname.match(/^\/admin\/keys\/([^/]+)$/);
 
+    if (projectModelsMatch) {
+      const projectId = decodeURIComponent(projectModelsMatch[1]);
+      const projects = await this.getProjects();
+      const project = projects.find((item) => item.id === projectId);
+      if (!project) return json({ error: "Project not found" }, { status: 404 });
+
+      if (request.method === "GET") {
+        return json({
+          project: toPublicProject(project, (await this.getAccounts()).filter((account) => account.projectId === project.id).length),
+          modelMapping: project.modelMapping,
+          disabledModels: project.disabledModels,
+          publicModels: projectPublicModels(project),
+        });
+      }
+
+      if (request.method === "PATCH") {
+        const payload = await readJsonBody<Pick<ProjectInput, "modelMapping" | "disabledModels">>(request);
+        const index = projects.findIndex((item) => item.id === project.id);
+        projects[index] = {
+          ...project,
+          modelMapping: payload.modelMapping === undefined ? project.modelMapping : normalizeModelMapping(payload.modelMapping, project.id),
+          disabledModels: payload.disabledModels === undefined ? project.disabledModels : normalizeDisabledModels(payload.disabledModels, project.id),
+          updatedAt: Date.now(),
+        };
+        await this.saveProjects(projects);
+        return json({
+          ok: true,
+          modelMapping: projects[index].modelMapping,
+          disabledModels: projects[index].disabledModels,
+          publicModels: projectPublicModels(projects[index]),
+        });
+      }
+    }
+
     if (pathname === "/admin/keys" && request.method === "GET") {
       return json({ keys: await this.getApiKeys() });
     }
@@ -2689,7 +3115,10 @@ export class RouterState extends DurableObject<Env> {
     }
 
     if (pathname === "/admin/stats/reset" && request.method === "POST") {
-      await this.saveStatsMap({});
+      await Promise.all([
+        this.saveStatsMap({}),
+        this.saveModelHourlyStats({}),
+      ]);
       return json({ ok: true });
     }
 
@@ -2766,7 +3195,7 @@ export class RouterState extends DurableObject<Env> {
         }
       }
       const recommendations = [...modelMap.entries()]
-        .map(([model, labels]) => ({ model, publicModel: model, accounts: labels.sort((a, b) => a.localeCompare(b)) }))
+        .map(([model, labels]) => ({ model, publicModel: prefixProjectModel(modelDiscoverProjectId, model), accounts: labels.sort((a, b) => a.localeCompare(b)) }))
         .sort((a, b) => b.accounts.length - a.accounts.length || a.model.localeCompare(b.model));
       return json({
         ok: results.some((item) => item.ok),
@@ -2868,7 +3297,7 @@ export class RouterState extends DurableObject<Env> {
     ]);
     const summary = summarizeAccounts(accounts, statsMap, healthMap);
     const hours = lastHourKeys(24);
-    const configuredModels = projects.flatMap((project) => Object.keys(project.modelMapping ?? {}));
+    const configuredModels = projects.flatMap((project) => projectPublicModels(project));
     const publicModels = [...new Set([...configuredModels, ...Object.keys(modelHourlyStats)])].sort((a, b) => a.localeCompare(b));
     const modelHealth = publicModels.map((model) => {
       const stats = modelHourlyStats[model] ?? {};
@@ -2903,7 +3332,7 @@ export class RouterState extends DurableObject<Env> {
       return {
         project: toPublicProject(project, scoped.length),
         summary: summarizeAccounts(scoped, statsMap, healthMap),
-        models: Object.keys(project.modelMapping ?? {}).filter((model) => !project.disabledModels.includes(model)),
+        models: projectPublicModels(project),
       };
     });
     const state = summary.enabled === 0 || summary.available === 0
