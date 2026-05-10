@@ -406,306 +406,354 @@ function renderMonitorPage(): string {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HYHub Status</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     :root {
       color-scheme: light dark;
-      /* Light Mode Default */
-      --bg: #f8fafc;
-      --bg-gradient: radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 40%), radial-gradient(circle at bottom left, rgba(139, 92, 246, 0.08), transparent 40%);
-      --panel: rgba(255, 255, 255, 0.7);
-      --panel-soft: rgba(241, 245, 249, 0.8);
-      --panel-border: rgba(255, 255, 255, 0.8);
-      --text: #0f172a;
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --panel-soft: #f1f5f9;
+      --text: #172033;
       --muted: #64748b;
-      --line: rgba(15, 23, 42, 0.06);
-      --ok: #10b981;
-      --warn: #f59e0b;
-      --bad: #ef4444;
-      --accent: #3b82f6;
-      --accent-gradient: linear-gradient(135deg, #3b82f6, #8b5cf6);
-      --shadow: 0 10px 40px -10px rgba(15, 23, 42, 0.08);
-      --shadow-hover: 0 20px 40px -10px rgba(15, 23, 42, 0.12);
-      --glass-blur: blur(16px);
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        /* Dark Mode overrides */
-        --bg: #0b0d17;
-        --bg-gradient: radial-gradient(circle at top right, rgba(59, 130, 246, 0.15), transparent 50%), radial-gradient(circle at bottom left, rgba(139, 92, 246, 0.15), transparent 50%);
-        --panel: rgba(255, 255, 255, 0.02);
-        --panel-soft: rgba(255, 255, 255, 0.04);
-        --panel-border: rgba(255, 255, 255, 0.06);
-        --text: #f8fafc;
-        --muted: #94a3b8;
-        --line: rgba(255, 255, 255, 0.08);
-        --shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.5);
-        --shadow-hover: 0 20px 40px -10px rgba(0, 0, 0, 0.7);
-      }
+      --line: rgba(23, 32, 51, 0.12);
+      --ok: #0f9f6e;
+      --warn: #b7791f;
+      --bad: #d64545;
+      --accent: #2563eb;
+      --shadow: 0 18px 46px rgba(15, 23, 42, 0.08);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--bg);
-      background-image: var(--bg-gradient);
-      background-attachment: fixed;
       color: var(--text);
-      -webkit-font-smoothing: antialiased;
     }
     .wrap { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 24px 0 72px; }
-    
-    /* Topbar */
-    .topbar { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-bottom: 24px; animation: fadeInDown 0.6s ease-out; }
-    .brand { display: flex; align-items: center; gap: 12px; font-weight: 800; font-size: 1.1rem; letter-spacing: -0.02em; }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 14px;
+      padding: 0 2px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text);
+      font-weight: 800;
+      letter-spacing: 0;
+    }
     .brand-mark {
-      display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: #fff;
-      background: var(--accent-gradient);
-      box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      color: #fff;
+      background: var(--accent);
+      box-shadow: 0 10px 22px rgba(37, 99, 235, 0.18);
     }
     .admin-link {
-      display: inline-flex; align-items: center; min-height: 38px; padding: 0 16px;
-      border: 1px solid var(--panel-border); border-radius: 10px;
-      color: var(--text); background: var(--panel); backdrop-filter: var(--glass-blur);
-      text-decoration: none; font-weight: 600; font-size: 14px; transition: all 0.2s ease;
-      box-shadow: var(--shadow);
-    }
-    .admin-link:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); border-color: rgba(255,255,255,0.2); }
-
-    /* Masthead */
-    .masthead { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 16px; margin-bottom: 24px; animation: fadeInUp 0.7s ease-out both; }
-    
-    .panel-glass {
-      border: 1px solid var(--panel-border);
-      border-radius: 16px;
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--text);
       background: var(--panel);
-      backdrop-filter: var(--glass-blur);
-      -webkit-backdrop-filter: var(--glass-blur);
+      text-decoration: none;
       box-shadow: var(--shadow);
-      transition: all 0.3s ease;
     }
-    .panel-glass:hover { box-shadow: var(--shadow-hover); }
-
-    .hero { padding: clamp(30px, 5vw, 40px); display: flex; flex-direction: column; justify-content: center; position: relative; overflow: hidden; }
-    /* Decorative glowing orb inside hero */
-    .hero::before {
-      content: ""; position: absolute; top: -50%; right: -10%; width: 300px; height: 300px;
-      background: var(--accent-gradient); filter: blur(80px); opacity: 0.15; z-index: 0; pointer-events: none;
+    .masthead {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 210px;
+      gap: 14px;
+      align-items: stretch;
+      margin-bottom: 16px;
     }
-    .hero > * { position: relative; z-index: 1; }
-    
-    .eyebrow { 
-      display: inline-block; padding: 4px 12px; border-radius: 99px;
-      background: rgba(59, 130, 246, 0.1); color: var(--accent); border: 1px solid rgba(59, 130, 246, 0.2);
-      font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 16px; width: max-content;
+    .hero, .status-tile, .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
     }
-    h1 { margin: 0 0 12px; font-size: clamp(36px, 5vw, 56px); font-weight: 800; line-height: 1.1; letter-spacing: -0.03em; text-wrap: balance; }
-    p { margin: 0; color: var(--muted); line-height: 1.6; font-size: 1.05rem; max-width: 600px; }
-    
-    .status-line { display: inline-flex; align-items: center; gap: 12px; margin-top: 24px; padding: 8px 16px; background: var(--panel-soft); border-radius: 99px; border: 1px solid var(--line); width: max-content; }
-    .status-line strong { font-weight: 600; font-size: 14px; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); position: relative; }
-    .dot.ok { background: var(--ok); box-shadow: 0 0 12px var(--ok); }
-    .dot.ok::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--ok); animation: ripple 2s infinite ease-out; }
-    .dot.warn { background: var(--warn); box-shadow: 0 0 12px var(--warn); }
-    .dot.bad { background: var(--bad); box-shadow: 0 0 12px var(--bad); }
-
-    .status-tile { display: grid; grid-template-rows: 1fr 1fr; }
-    .status-part { padding: 24px; display: flex; flex-direction: column; justify-content: center; }
+    .hero { padding: clamp(20px, 3vw, 30px); display: grid; gap: 12px; }
+    .eyebrow { color: var(--accent); font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+    h1 { margin: 0; max-width: 760px; font-size: clamp(32px, 5vw, 54px); line-height: 1; letter-spacing: 0; text-wrap: pretty; }
+    p { margin: 0; color: var(--muted); line-height: 1.55; text-wrap: pretty; }
+    .status-line { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin-top: 4px; padding-left: 2px; }
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: var(--muted);
+      box-shadow: 0 0 0 7px rgba(109, 117, 128, 0.13);
+      position: relative;
+    }
+    .dot::after {
+      content: "";
+      position: absolute;
+      inset: -8px;
+      border-radius: inherit;
+      border: 1px solid currentColor;
+      opacity: 0;
+      transform: scale(0.72);
+    }
+    .dot.ok { color: var(--ok); background: var(--ok); box-shadow: 0 0 0 7px rgba(15, 159, 110, 0.13), 0 0 28px rgba(15, 159, 110, 0.20); animation: breatheOk 2.4s ease-in-out infinite; }
+    .dot.ok::after { animation: ripple 2.4s ease-out infinite; }
+    .dot.warn { color: var(--warn); background: var(--warn); box-shadow: 0 0 0 7px rgba(182, 107, 24, 0.14); animation: breatheWarn 2.8s ease-in-out infinite; }
+    .dot.warn::after { animation: ripple 2.8s ease-out infinite; }
+    .dot.bad { color: var(--bad); background: var(--bad); box-shadow: 0 0 0 7px rgba(200, 76, 76, 0.14); animation: breatheBad 1.8s ease-in-out infinite; }
+    .dot.bad::after { animation: ripple 1.8s ease-out infinite; }
+    .status-tile { padding: 0; display: grid; grid-template-rows: 1fr 1fr; min-height: 148px; overflow: hidden; }
+    .status-part { padding: 14px; display: flex; align-items: center; }
     .status-part + .status-part { border-top: 1px solid var(--line); }
-    .status-tile b { display: block; color: var(--text); font-size: 36px; font-weight: 800; line-height: 1; margin-bottom: 8px; letter-spacing: -0.02em; }
-    .status-tile p { font-size: 14px; margin: 0; display: flex; flex-direction: column; }
-
-    /* Grid Stats */
-    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; animation: fadeInUp 0.8s ease-out both; }
-    .card { padding: 24px; }
-    .card b { display: block; font-size: clamp(28px, 4vw, 36px); font-weight: 800; line-height: 1; margin-bottom: 8px; letter-spacing: -0.02em; }
-    .card span { color: var(--muted); font-size: 14px; font-weight: 500; }
-    
-    /* Model Panel */
-    .model-panel { padding: 0; overflow: hidden; animation: fadeInUp 0.9s ease-out both; }
+    .status-tile b { display: block; color: var(--text); font-size: 26px; line-height: 1; margin-bottom: 6px; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0; }
+    .card {
+      padding: 14px;
+      animation: rise 420ms ease-out both;
+    }
+    .card b { display: block; font-size: clamp(24px, 3vw, 32px); line-height: 1; margin-bottom: 6px; }
+    .card span { color: var(--muted); font-size: 13px; }
+    .bar { height: 9px; border-radius: 999px; overflow: hidden; background: var(--panel-soft); margin-top: 12px; }
+    .bar i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--ok)); transition: width 520ms ease; }
+    .footer { color: var(--muted); font-size: 13px; margin-top: 18px; }
+    .model-panel { margin-top: 12px; padding: 0; overflow: hidden; }
     .model-head {
-      display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); gap: 16px; align-items: center;
-      padding: 24px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,0.01);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+      gap: 12px;
+      align-items: end;
+      padding: 18px;
+      border-bottom: 1px solid var(--line);
     }
-    .model-panel h2 { margin: 0 0 8px; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
-    
+    .model-panel h2 { margin: 0 0 6px; font-size: 20px; letter-spacing: 0; }
+    .model-tools { display: grid; gap: 8px; }
     .model-search {
-      width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px;
-      color: var(--text); background: var(--panel-soft); font-family: inherit; font-size: 14px;
-      transition: all 0.2s; outline: none;
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: var(--text);
+      background: var(--panel);
+      font: inherit;
     }
-    .model-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
-    
-    .model-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px 24px; border-bottom: 1px solid var(--line); }
+    .model-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
     .model-tab {
-      border: 1px solid transparent; border-radius: 99px; padding: 8px 16px;
-      color: var(--muted); background: var(--panel-soft);
-      cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600;
-      transition: all 0.2s ease; outline: none;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 11px;
+      color: var(--muted);
+      background: var(--panel);
+      cursor: pointer;
+      font: inherit;
+      box-shadow: none;
     }
-    .model-tab:hover { color: var(--text); background: rgba(15,23,42,0.05); }
-    @media (prefers-color-scheme: dark) { .model-tab:hover { background: rgba(255,255,255,0.08); } }
-    .model-tab.active {
-      color: #fff; background: var(--accent-gradient);
-      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); border-color: transparent;
-    }
-    
-    .model-table-wrap { overflow-x: auto; }
-    .model-table { display: grid; min-width: 900px; }
+    .model-tab.active { color: var(--accent); border-color: rgba(37, 99, 235, 0.36); background: rgba(37, 99, 235, 0.08); }
+    .model-table-wrap { overflow-x: auto; overflow-y: visible; }
+    .model-table { display: grid; min-width: 860px; }
     .model-row {
-      display: grid; grid-template-columns: minmax(180px, 1.2fr) minmax(100px, 0.6fr) minmax(80px, 0.4fr) minmax(320px, 1.6fr) minmax(90px, 0.4fr);
-      gap: 16px; align-items: center; padding: 16px 24px; border-bottom: 1px solid var(--line);
-      font-size: 14px; transition: background 0.2s;
+      display: grid;
+      grid-template-columns: minmax(150px, 1.1fr) minmax(90px, 0.55fr) minmax(72px, 0.45fr) minmax(312px, 1.5fr) minmax(86px, 0.45fr);
+      gap: 12px;
+      align-items: center;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line);
+      font-size: 13px;
     }
-    .model-row:not(.head):hover { background: var(--panel-soft); }
-    .model-row.head { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; background: rgba(0,0,0,0.02); }
-    @media (prefers-color-scheme: dark) { .model-row.head { background: rgba(255,255,255,0.02); } }
+    .model-row.head { color: var(--muted); font-size: 12px; font-weight: 700; background: var(--panel-soft); }
     .model-row:last-child { border-bottom: 0; }
-    
-    .model-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
-    .metric-mini span { color: var(--muted); font-size: 12px; background: var(--panel-soft); padding: 2px 8px; border-radius: 6px; }
-    
-    .model-provider { font-weight: 500; }
-    .model-latency { font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
-    
-    /* 24-hour strip redesign */
-    .hour-strip { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 4px; }
-    .hour-strip::-webkit-scrollbar { height: 4px; }
-    .hour-strip::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.1); border-radius: 99px; }
-    @media (prefers-color-scheme: dark) { .hour-strip::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); } }
+    .model-name { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .model-provider, .model-latency { color: var(--muted); }
+    .hour-strip {
+      display: grid;
+      grid-template-columns: repeat(24, 18px);
+      gap: 5px;
+      align-items: center;
+      width: max-content;
+      max-width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 2px 0 8px;
+      position: relative;
+      scrollbar-width: thin;
+      touch-action: pan-x;
+      -webkit-overflow-scrolling: touch;
+    }
+    .hour-strip::-webkit-scrollbar { height: 5px; }
+    .hour-strip::-webkit-scrollbar-thumb { background: rgba(109, 117, 128, 0.28); border-radius: 999px; }
     .hour-cell {
-      width: 12px; height: 24px; border-radius: 6px;
-      background: var(--panel-soft); flex: 0 0 auto;
-      cursor: help; transition: transform 0.1s, opacity 0.2s;
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      background: rgba(100, 116, 139, 0.16);
+      border: 1px solid rgba(100, 116, 139, 0.14);
+      cursor: help;
+      position: relative;
+      flex: 0 0 auto;
     }
-    .hour-cell:hover { transform: scaleY(1.2); opacity: 0.8; }
-    .hour-cell.good { background: var(--ok); box-shadow: 0 0 8px rgba(16, 185, 129, 0.4); }
-    .hour-cell.warn { background: var(--warn); box-shadow: 0 0 8px rgba(245, 158, 11, 0.4); }
-    .hour-cell.bad { background: var(--bad); box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
-    
+    .hour-cell.good { background: rgba(15, 159, 110, 0.72); border-color: rgba(15, 159, 110, 0.42); }
+    .hour-cell.warn { background: rgba(183, 121, 31, 0.62); border-color: rgba(183, 121, 31, 0.38); }
+    .hour-cell.bad { background: rgba(214, 69, 69, 0.70); border-color: rgba(214, 69, 69, 0.42); }
     .model-badge {
-      display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
-      border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 99px;
-      color: var(--ok); background: rgba(16, 185, 129, 0.1);
-      font-size: 12px; font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 9px;
+      border: 1px solid rgba(15, 159, 110, 0.22);
+      border-radius: 999px;
+      color: var(--ok);
+      background: rgba(15, 159, 110, 0.08);
+      white-space: nowrap;
     }
-    .model-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; }
-    
-    .model-empty { padding: 40px; text-align: center; color: var(--muted); font-weight: 500; }
-    
+    .model-badge::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 0 4px rgba(15, 159, 110, 0.10);
+    }
+    .model-empty { padding: 20px 18px; color: var(--muted); }
+    .metric-mini { color: var(--muted); font-size: 12px; margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap; }
     .hour-tooltip {
-      position: fixed; z-index: 50; padding: 12px 16px;
-      background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px;
-      color: #fff; box-shadow: 0 20px 40px rgba(0,0,0,0.3);
-      pointer-events: none; opacity: 0; transform: translateY(8px);
-      transition: opacity 0.2s, transform 0.2s; font-size: 13px; line-height: 1.6;
+      position: fixed;
+      z-index: 20;
+      min-width: 190px;
+      max-width: min(280px, calc(100vw - 24px));
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--text);
+      background: var(--panel);
+      box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 140ms ease, transform 140ms ease;
+      font-size: 12px;
+      line-height: 1.6;
     }
     .hour-tooltip.show { opacity: 1; transform: translateY(0); }
-    .hour-tooltip b { display: block; font-size: 14px; margin-bottom: 6px; color: #fff; }
-    .hour-tooltip div { color: rgba(255,255,255,0.8); }
-
-    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes ripple { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(2.5); opacity: 0; } }
-    
-    @media (max-width: 900px) {
-      .masthead { grid-template-columns: 1fr; }
-      .grid { grid-template-columns: repeat(2, 1fr); }
-      .status-tile { grid-template-rows: auto auto; grid-template-columns: 1fr 1fr; }
-      .status-part + .status-part { border-top: none; border-left: 1px solid var(--line); }
+    .hour-tooltip b { display: block; font-size: 13px; margin-bottom: 4px; }
+    @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes ripple { 0% { opacity: 0.4; transform: scale(0.7); } 70%, 100% { opacity: 0; transform: scale(1.9); } }
+    @keyframes breatheOk { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+    @keyframes breatheWarn { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.14); } }
+    @keyframes breatheBad { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
+    @media (prefers-reduced-motion: reduce) {
+      .card, .dot, .dot::after { animation: none !important; }
     }
-    @media (max-width: 640px) {
-      .model-head { grid-template-columns: 1fr; }
-      .grid { grid-template-columns: 1fr; }
-      .status-tile { grid-template-columns: 1fr; grid-template-rows: auto auto; }
-      .status-part + .status-part { border-left: none; border-top: 1px solid var(--line); }
-      .model-row { grid-template-columns: 1fr; gap: 12px; }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f172a;
+        --panel: #111c2f;
+        --panel-soft: #16243a;
+        --text: #e5edf8;
+        --muted: #94a3b8;
+        --line: rgba(226, 232, 240, 0.12);
+        --shadow: 0 18px 46px rgba(0, 0, 0, 0.28);
+      }
+      body { background: var(--bg); }
+    }
+    @media (max-width: 820px) { .masthead { grid-template-columns: 1fr; } .grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 640px) { .model-head { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) {
+      .model-table-wrap { overflow-x: auto; }
+      .model-table { min-width: 0; }
+      .model-row { grid-template-columns: 1fr; gap: 8px; }
       .model-row.head { display: none; }
-      .hour-strip { width: 100%; justify-content: space-between; }
-      .hour-cell { width: 3.5%; }
+      .hour-strip { grid-template-columns: repeat(24, 22px); width: 100%; max-width: 100%; }
+      .hour-cell { width: 22px; height: 22px; }
     }
+    @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <main class="wrap">
     <div class="topbar">
-      <div class="brand"><span class="brand-mark">H</span><span>HYHub Gateway</span></div>
-      <a class="admin-link" href="/admin">Console</a>
+      <div class="brand"><span class="brand-mark">H</span><span>HYHub</span></div>
+      <a class="admin-link" href="/admin">管理后台</a>
     </div>
     <section class="masthead">
-      <div class="hero panel-glass">
-        <span class="eyebrow">Public Dashboard</span>
-        <h1>Service Status</h1>
-        <p>Real-time metrics and health monitoring for our unified AI API gateway.</p>
+      <div class="hero">
+        <span class="eyebrow">Public service board</span>
+        <h1>HYHub Status</h1>
+        <p>面向外部的 API Hub 健康监控页，展示账号池可用性、真实调用和模型健康。</p>
         <div class="status-line">
           <i id="state-dot" class="dot"></i>
-          <strong id="state-text">Initializing...</strong>
+          <strong id="state-text">正在读取状态...</strong>
         </div>
       </div>
-      <aside class="status-tile panel-glass">
-        <div class="status-part"><p><b id="success-rate">--%</b><span>Global Success Rate</span></p></div>
-        <div class="status-part"><p><b>15s</b><span>Auto Refresh</span></p></div>
+      <aside class="status-tile">
+        <div class="status-part"><p><b>15s</b>自动刷新</p></div>
+        <div class="status-part">
+          <p><b id="success-rate">0%</b>调用成功率</p>
+        </div>
       </aside>
     </section>
     <section class="grid">
-      <div class="card panel-glass"><b id="available">-</b><span>Active Nodes</span></div>
-      <div class="card panel-glass"><b id="calls">-</b><span>Total Requests</span></div>
-      <div class="card panel-glass"><b id="successes">-</b><span>Successful</span></div>
-      <div class="card panel-glass"><b id="errors">-</b><span>Failed</span></div>
+      <div class="card"><b id="available">0</b><span>可用账号</span></div>
+      <div class="card"><b id="calls">0</b><span>调用次数</span></div>
+      <div class="card"><b id="successes">0</b><span>成功次数</span></div>
+      <div class="card"><b id="errors">0</b><span>失败次数</span></div>
     </section>
-    <section class="model-panel panel-glass">
+    <section class="card model-panel">
       <div class="model-head">
         <div>
-          <h2>Model Health Radar</h2>
-          <p id="model-summary" style="margin:0;color:var(--muted);font-size:14px">Loading insights...</p>
+          <h2>模型健康度</h2>
+          <p id="model-summary">正在读取模型列表...</p>
         </div>
         <div class="model-tools">
-          <input id="model-search" class="model-search" placeholder="Search models by name or provider..." />
+          <input id="model-search" class="model-search" placeholder="搜索模型" />
         </div>
       </div>
       <div id="model-tabs" class="model-tabs"></div>
-      <div id="model-list" class="model-table-wrap"><div class="model-empty">Connecting to gateway...</div></div>
+      <div id="model-list" class="model-table-wrap"><div class="model-empty">正在读取模型列表...</div></div>
     </section>
   </main>
   <div id="hour-tooltip" class="hour-tooltip"></div>
   <script>
     function fmt(value) {
       const n = Number(value || 0);
-      if (n >= 1000000) return (n / 1000000).toFixed(2) + "M";
+      if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
       if (n >= 1000) return (n / 1000).toFixed(1) + "K";
       return String(n);
     }
     function setText(id, value) {
-      const el = document.getElementById(id);
-      if(el) el.textContent = value;
+      document.getElementById(id).textContent = value;
     }
     let publicModels = [];
     let activeFamily = "all";
     function escapeHtml(value) {
       return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
     }
-    function modelName(model) { return typeof model === "string" ? model : String(model?.model || ""); }
+    function modelName(model) {
+      return typeof model === "string" ? model : String(model?.model || "");
+    }
     function modelFamily(model) {
       const name = modelName(model).toLowerCase();
       if (name.includes("claude")) return "Anthropic";
       if (name.includes("gemini") || name.includes("gemma")) return "Gemini";
       if (name.includes("deepseek")) return "DeepSeek";
       if (name.includes("qwen")) return "Qwen";
-      if (name.includes("gpt") || name.includes("o1") || name.includes("o3") || name.includes("dall-e") || name.includes("whisper") || name.includes("tts")) return "OpenAI";
+      if (name.includes("gpt") || name.includes("dall-e") || name.includes("whisper") || name.includes("tts")) return "OpenAI";
       if (name.includes("grok")) return "xAI";
       if (name.includes("llama")) return "Llama";
       if (name.includes("mistral") || name.includes("codestral")) return "Mistral";
       if (name.includes("doubao")) return "Doubao";
-      return "Others";
+      return "Model";
     }
     function modelEndpoint(model) {
       const name = modelName(model).toLowerCase();
       if (name.includes("embedding") || name.includes("embed")) return "/v1/embeddings";
-      if (name.includes("whisper") || name.includes("transcrib")) return "/v1/audio/transcriptions";
+      if (name.includes("whisper") || name.includes("transcrib")) return "/v1/audio";
       if (name.includes("tts") || name.includes("speech")) return "/v1/audio/speech";
-      if (name.includes("dall-e") || name.includes("image") || name.includes("imagen")) return "/v1/images/generations";
+      if (name.includes("dall-e") || name.includes("image") || name.includes("imagen")) return "/v1/images";
       return "/v1/chat/completions";
     }
     function hourClass(bucket) {
@@ -717,17 +765,25 @@ function renderMonitorPage(): string {
     }
     function renderHours(model) {
       const buckets = Array.isArray(model?.hours) ? model.hours : [];
-      return '<div class="hour-strip">' + buckets.map((bucket) => {
-        const time = new Date(bucket.hour).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: true });
+      return '<div class="hour-block"><div class="hour-strip" aria-label="最近 24 小时调用状态">' + buckets.map((bucket) => {
+        const time = new Date(bucket.hour).toLocaleString(undefined, {
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        });
         const detail = bucket?.calls
-          ? time + "｜Calls: " + fmt(bucket.calls) + "｜Success: " + fmt(bucket.successes) + "｜Failed: " + fmt(bucket.errors) + "｜Rate: " + bucket.successRate + "%｜Latency: " + (bucket.avgDurationMs || 0) + "ms"
-          : time + "｜No activity";
+          ? time + "｜调用 " + bucket.calls + "｜成功 " + bucket.successes + "｜失败 " + bucket.errors + "｜成功率 " + bucket.successRate + "%｜延迟 " + (bucket.avgDurationMs || 0) + "ms"
+          : time + "｜暂无调用";
         return '<i class="hour-cell ' + hourClass(bucket) + '" data-hour-detail="' + escapeHtml(detail) + '"></i>';
-      }).join("") + '</div>';
+      }).join("") + '</div></div>';
     }
     function scrollHourStripsToLatest() {
       requestAnimationFrame(() => {
-        document.querySelectorAll(".hour-strip").forEach((strip) => { strip.scrollLeft = strip.scrollWidth; });
+        document.querySelectorAll(".hour-strip").forEach((strip) => {
+          strip.scrollLeft = strip.scrollWidth;
+        });
       });
     }
     function renderTabs(models) {
@@ -739,9 +795,9 @@ function renderMonitorPage(): string {
       }
       const ordered = ["all", ...[...counts.keys()].filter((item) => item !== "all").sort((a, b) => a.localeCompare(b))];
       tabs.innerHTML = ordered.map((family) => {
-        const label = family === "all" ? "All Models" : family;
+        const label = family === "all" ? "全部模型" : family;
         const active = family === activeFamily ? " active" : "";
-        return '<button class="model-tab' + active + '" data-model-family="' + escapeHtml(family) + '">' + escapeHtml(label) + ' (' + (counts.get(family) || 0) + ')</button>';
+        return '<button class="model-tab' + active + '" data-model-family="' + escapeHtml(family) + '">' + escapeHtml(label) + ' · ' + (counts.get(family) || 0) + '</button>';
       }).join("");
     }
     function renderModels(models) {
@@ -755,21 +811,23 @@ function renderMonitorPage(): string {
         return !query || modelName(model).toLowerCase().includes(query) || family.toLowerCase().includes(query);
       });
       document.getElementById("model-summary").textContent = publicModels.length
-        ? "Showing " + items.length + " of " + publicModels.length + " available models."
-        : "No models configured in gateway.";
+        ? "共 " + publicModels.length + " 个模型，当前显示 " + items.length + " 个。"
+        : "暂未配置开放模型。";
       list.innerHTML = items.length
-        ? '<div class="model-table"><div class="model-row head"><span>Model ID</span><span>Provider</span><span>Status</span><span>24h Health Activity</span><span>Avg Latency</span></div>' +
+        ? '<div class="model-table"><div class="model-row head"><span>模型名称</span><span>供应商</span><span>状态</span><span>最近 24 小时</span><span>延迟</span></div>' +
           items.map((model) => '<div class="model-row">' +
             '<div><div class="model-name" title="' + escapeHtml(modelName(model)) + '">' + escapeHtml(modelName(model)) + '</div><div class="metric-mini"><span>' + escapeHtml(modelEndpoint(model)) + '</span></div></div>' +
             '<div class="model-provider">' + escapeHtml(modelFamily(model)) + '</div>' +
-            '<div><span class="model-badge">Online</span></div>' +
+            '<div><span class="model-badge">可用</span></div>' +
             '<div>' + renderHours(model) + '</div>' +
-            '<div class="model-latency">' + escapeHtml(model.avgDurationMs ? model.avgDurationMs + "ms" : "N/A") + '</div>' +
+            '<div class="model-latency">' + escapeHtml(model.avgDurationMs ? model.avgDurationMs + "ms" : "暂无") + '</div>' +
           '</div>').join("") + '</div>'
-        : '<div class="model-empty">No models match your criteria.</div>';
+        : '<div class="model-empty">暂未配置开放模型。</div>';
       scrollHourStripsToLatest();
     }
-    document.addEventListener("input", (event) => { if (event.target?.id === "model-search") renderModels(publicModels); });
+    document.addEventListener("input", (event) => {
+      if (event.target?.id === "model-search") renderModels(publicModels);
+    });
     document.addEventListener("click", (event) => {
       const family = event.target?.getAttribute?.("data-model-family");
       if (!family) return;
@@ -782,25 +840,31 @@ function renderMonitorPage(): string {
       const tooltip = document.getElementById("hour-tooltip");
       const parts = detail.split("｜");
       tooltip.innerHTML = '<b>' + escapeHtml(parts[0] || "") + '</b>' + parts.slice(1).map((item) => '<div>' + escapeHtml(item) + '</div>').join("");
-      tooltip.style.left = "-9999px"; tooltip.classList.add("show");
-      
-      requestAnimationFrame(() => {
-        const rect = target.getBoundingClientRect();
-        const tipRect = tooltip.getBoundingClientRect();
-        let left = rect.left + rect.width / 2 - tipRect.width / 2;
-        let top = rect.top - tipRect.height - 12;
-        if (left < 12) left = 12;
-        if (left + tipRect.width > window.innerWidth - 12) left = window.innerWidth - tipRect.width - 12;
-        if (top < 12) top = rect.bottom + 12; // Fallback to bottom if no space on top
-        tooltip.style.left = left + "px";
-        tooltip.style.top = top + "px";
-      });
+      tooltip.style.left = "12px";
+      tooltip.style.top = "12px";
+      tooltip.classList.add("show");
+      const rect = target.getBoundingClientRect();
+      const rowRect = target.closest(".model-row")?.getBoundingClientRect() || rect;
+      const tipRect = tooltip.getBoundingClientRect();
+      const left = Math.min(window.innerWidth - tipRect.width - 12, Math.max(12, rect.left + rect.width / 2 - tipRect.width / 2));
+      const below = rowRect.bottom + 10;
+      const above = rowRect.top - tipRect.height - 10;
+      const top = below + tipRect.height <= window.innerHeight - 12 ? below : Math.max(12, above);
+      tooltip.style.left = left + "px";
+      tooltip.style.top = top + "px";
     }
-    function hideHourTooltip() { document.getElementById("hour-tooltip").classList.remove("show"); }
-    document.addEventListener("pointerover", (event) => { if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target); });
-    document.addEventListener("pointerout", (event) => { if (event.target?.matches?.("[data-hour-detail]")) hideHourTooltip(); });
-    document.addEventListener("pointerdown", (event) => { if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target); });
-    
+    function hideHourTooltip() {
+      document.getElementById("hour-tooltip").classList.remove("show");
+    }
+    document.addEventListener("pointerover", (event) => {
+      if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target);
+    });
+    document.addEventListener("pointerout", (event) => {
+      if (event.target?.matches?.("[data-hour-detail]")) hideHourTooltip();
+    });
+    document.addEventListener("pointerdown", (event) => {
+      if (event.target?.matches?.("[data-hour-detail]")) showHourTooltip(event.target);
+    });
     async function loadStatus() {
       try {
         const response = await fetch("/public/status", { cache: "no-store" });
@@ -808,7 +872,7 @@ function renderMonitorPage(): string {
         const summary = data.summary || {};
         const dot = document.getElementById("state-dot");
         dot.className = "dot " + data.state;
-        setText("state-text", data.message || "Unknown Status");
+        setText("state-text", data.message || "状态未知");
         setText("available", summary.available || 0);
         setText("calls", fmt(summary.calls || 0));
         setText("successes", fmt(summary.successes || 0));
@@ -817,7 +881,7 @@ function renderMonitorPage(): string {
         renderModels(data.modelHealth || (data.models || []).map((model) => ({ model, hours: [] })));
       } catch {
         document.getElementById("state-dot").className = "dot bad";
-        setText("state-text", "Gateway Unreachable");
+        setText("state-text", "健康状态读取失败");
       }
     }
     loadStatus();
@@ -837,28 +901,23 @@ function renderAdminPage(): string {
   <style>
     :root {
       color-scheme: light dark;
-      --bg: #f8fafc;
-      --panel: #ffffff;
-      --panel-soft: rgba(241, 245, 249, 0.8);
-      --text: #0f172a;
-      --muted: #64748b;
-      --line: rgba(15, 23, 42, 0.08);
-      --accent: #3b82f6;
-      --ok: #10b981;
-      --warn: #f59e0b;
-      --bad: #ef4444;
-      --shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.08);
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #0b0d17;
-        --panel: #151828;
-        --panel-soft: rgba(255, 255, 255, 0.05);
-        --text: #f8fafc;
-        --muted: #94a3b8;
-        --line: rgba(255, 255, 255, 0.1);
-        --shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.5);
-      }
+      --bg: #f2eee6;
+      --surface: #fffaf1;
+      --surface-2: #f8f2e8;
+      --surface-3: #ece6dc;
+      --muted: #6f746f;
+      --line: rgba(28, 35, 43, 0.13);
+      --text: #1d252c;
+      --accent: #295fc8;
+      --accent-2: #14866d;
+      --danger: #c94f4f;
+      --warn: #b07123;
+      --panel: rgba(255, 250, 241, 0.9);
+      --panel-soft: rgba(248, 242, 232, 0.78);
+      --shadow: 0 18px 48px rgba(55, 64, 76, 0.12);
+      --motion-fast: 150ms;
+      --motion-med: 280ms;
+      --motion-slow: 520ms;
     }
     * { box-sizing: border-box; }
     body {
@@ -1163,30 +1222,17 @@ function renderAdminPage(): string {
     }
     @media (prefers-color-scheme: dark) {
       :root {
-      color-scheme: light dark;
-      --bg: #f8fafc;
-      --panel: #ffffff;
-      --panel-soft: rgba(241, 245, 249, 0.8);
-      --text: #0f172a;
-      --muted: #64748b;
-      --line: rgba(15, 23, 42, 0.08);
-      --accent: #3b82f6;
-      --ok: #10b981;
-      --warn: #f59e0b;
-      --bad: #ef4444;
-      --shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.08);
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #0b0d17;
-        --panel: #151828;
-        --panel-soft: rgba(255, 255, 255, 0.05);
-        --text: #f8fafc;
-        --muted: #94a3b8;
-        --line: rgba(255, 255, 255, 0.1);
-        --shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.5);
+        --bg: #171716;
+        --surface: #22211f;
+        --surface-2: #1d1d1b;
+        --surface-3: #2b2925;
+        --muted: #aaa39a;
+        --line: rgba(245, 239, 228, 0.12);
+        --text: #f6efe5;
+        --panel: rgba(31, 31, 29, 0.9);
+        --panel-soft: rgba(35, 34, 31, 0.76);
+        --shadow: 0 18px 48px rgba(0, 0, 0, 0.30);
       }
-    }
       body {
         background:
           linear-gradient(180deg, rgba(23, 23, 22, 0.96), rgba(30, 29, 27, 0.98)),
@@ -2185,279 +2231,190 @@ function renderAdminPageV2(): string {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>HYHub Admin Console</title>
+  <title>HYHub Admin</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     :root {
       color-scheme: light dark;
-      /* Light Mode Default */
-      --bg: #f8fafc;
-      --bg-gradient: radial-gradient(circle at top left, rgba(59, 130, 246, 0.05), transparent 40%), radial-gradient(circle at bottom right, rgba(139, 92, 246, 0.05), transparent 40%);
-      --panel: rgba(255, 255, 255, 0.75);
-      --panel-solid: #ffffff;
-      --panel-soft: rgba(241, 245, 249, 0.8);
-      --panel-border: rgba(255, 255, 255, 0.9);
-      --text: #0f172a;
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --panel-soft: #f1f5f9;
+      --text: #172033;
       --muted: #64748b;
-      --line: rgba(15, 23, 42, 0.08);
-      --accent: #3b82f6;
-      --accent-gradient: linear-gradient(135deg, #3b82f6, #8b5cf6);
-      --ok: #10b981;
-      --warn: #f59e0b;
-      --bad: #ef4444;
-      --shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.08);
-      --shadow-hover: 0 20px 40px -8px rgba(15, 23, 42, 0.12);
-      --glass-blur: blur(20px);
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        /* Dark Mode overrides */
-        --bg: #0b0d17;
-        --bg-gradient: radial-gradient(circle at top left, rgba(59, 130, 246, 0.15), transparent 50%), radial-gradient(circle at bottom right, rgba(139, 92, 246, 0.15), transparent 50%);
-        --panel: rgba(255, 255, 255, 0.03);
-        --panel-solid: #151828;
-        --panel-soft: rgba(255, 255, 255, 0.05);
-        --panel-border: rgba(255, 255, 255, 0.08);
-        --text: #f8fafc;
-        --muted: #94a3b8;
-        --line: rgba(255, 255, 255, 0.1);
-        --shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.5);
-        --shadow-hover: 0 20px 40px -8px rgba(0, 0, 0, 0.7);
-      }
+      --line: rgba(23, 32, 51, 0.12);
+      --accent: #2563eb;
+      --ok: #0f9f6e;
+      --warn: #b7791f;
+      --bad: #d64545;
+      --shadow: 0 18px 46px rgba(15, 23, 42, 0.08);
     }
     * { box-sizing: border-box; }
-    body {
-      margin: 0; min-height: 100vh; overflow-x: hidden;
-      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-      background: var(--bg); background-image: var(--bg-gradient); background-attachment: fixed;
-      color: var(--text); -webkit-font-smoothing: antialiased;
-    }
+    body { margin: 0; min-height: 100vh; overflow-x: hidden; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
     body.menu-lock { overflow: hidden; }
     .hidden { display: none !important; }
-    
-    /* Login Gate */
-    .gate { min-height: 100vh; display: grid; place-items: center; padding: 20px; position: relative; z-index: 10; }
-    .gate::before {
-      content: ""; position: absolute; width: 400px; height: 400px;
-      background: var(--accent-gradient); filter: blur(100px); opacity: 0.2; z-index: -1; animation: pulse 6s infinite alternate;
-    }
-    .gate-card {
-      width: min(440px, 100%); padding: 40px 32px; display: grid; gap: 24px;
-      background: var(--panel); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
-      border: 1px solid var(--panel-border); border-radius: 24px; box-shadow: var(--shadow-hover);
-      text-align: center; animation: fadeInUp 0.5s ease-out;
-    }
-    .gate-card h1 { margin: 0; font-size: 32px; font-weight: 800; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .gate-card input { text-align: center; font-size: 16px; padding: 14px; border-radius: 12px; }
-    .gate-card button { padding: 14px; border-radius: 12px; font-size: 16px; font-weight: 600; }
-    
-    /* Shell Layout */
-    .shell { min-height: 100vh; display: grid; grid-template-columns: 280px minmax(0, 1fr); width: 100%; overflow-x: clip; }
+    .gate { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+    .gate-card, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
+    .gate-card { width: min(440px, 100%); padding: 28px; display: grid; gap: 14px; }
+    .shell { min-height: 100vh; display: grid; grid-template-columns: 276px minmax(0, 1fr); width: 100%; overflow-x: clip; }
     .mobile-bar { display: none; }
     .scrim { display: none; }
-    
-    /* Sidebar */
-    aside {
-      position: sticky; top: 0; height: 100vh; overflow-y: auto;
-      background: var(--panel); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
-      border-right: 1px solid var(--panel-border); padding: 24px 16px;
-      display: flex; flex-direction: column; gap: 24px; z-index: 5;
-    }
-    .brand h1 { margin: 0 0 4px; font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
-    .brand p, .muted { color: var(--muted); line-height: 1.5; font-size: 14px; font-weight: 500; }
-    
+    aside { position: sticky; top: 0; height: 100vh; min-width: 0; overflow-y: auto; border-right: 1px solid var(--line); background: var(--panel); padding: 18px 14px; display: flex; flex-direction: column; gap: 16px; }
+    .brand h1 { margin: 0 0 6px; font-size: 25px; letter-spacing: 0; }
+    .brand p, .muted { color: var(--muted); line-height: 1.55; }
     nav { display: grid; gap: 8px; }
-    .nav-btn {
-      justify-content: flex-start; padding: 12px 16px; background: transparent; color: var(--muted);
-      border: 1px solid transparent; border-radius: 12px; font-weight: 600; transition: all 0.2s;
-    }
-    .nav-btn:hover { background: var(--panel-soft); color: var(--text); }
-    .nav-btn.active { background: var(--accent-gradient); color: #fff; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }
-    
-    .side-section { padding-top: 16px; display: grid; gap: 12px; position: relative; }
-    .side-section::before { content: ""; position: absolute; top: 0; left: 16px; right: 16px; height: 1px; background: var(--line); }
-    .side-head { display: flex; align-items: center; justify-content: space-between; padding: 0 8px; }
-    .side-head span { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
-    .icon-btn { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; border-radius: 8px; font-size: 18px; }
-    .icon-btn:hover { background: var(--panel-soft); }
-    
-    .project-switcher { display: grid; gap: 8px; }
-    .project-item {
-      width: 100%; text-align: left; display: grid; gap: 6px; padding: 12px;
-      border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--text);
-      transition: all 0.2s;
-    }
-    .project-item:hover { background: var(--panel-soft); }
-    .project-item.active { border-color: rgba(59, 130, 246, 0.4); background: rgba(59, 130, 246, 0.1); color: var(--accent); }
+    .nav-btn { justify-content: flex-start; background: transparent; color: var(--text); border: 1px solid transparent; }
+    .nav-btn.active { background: var(--panel-soft); border-color: var(--line); color: var(--accent); }
+    .side-section { border-top: 1px solid var(--line); padding-top: 14px; display: grid; gap: 10px; }
+    .side-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .side-head span { color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .icon-btn { width: 34px; height: 34px; padding: 0; display: grid; place-items: center; border-radius: 8px; }
+    .project-switcher { display: grid; gap: 7px; }
+    .project-item { width: 100%; text-align: left; display: grid; gap: 5px; padding: 10px; border: 1px solid transparent; background: transparent; color: var(--text); }
+    .project-item.active { border-color: rgba(37, 99, 235, .45); background: var(--panel-soft); color: var(--accent); }
     .project-item .meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
-    
     .sidebar-actions { margin-top: auto; display: grid; gap: 8px; }
-    
-    /* Main Content */
-    main { min-width: 0; max-width: 100%; padding: 32px 40px; display: grid; gap: 24px; align-content: start; }
-    header {
-      display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
-      padding-bottom: 24px; border-bottom: 1px solid var(--line); animation: fadeInDown 0.4s ease-out;
-    }
-    h2, h3 { margin: 0; letter-spacing: -0.02em; font-weight: 700; }
-    h2 { font-size: 32px; font-weight: 800; margin-bottom: 6px; }
-    h3 { font-size: 18px; }
-    
-    /* Shared Elements */
-    button, input, textarea, select { font-family: inherit; border-radius: 10px; transition: all 0.2s ease; outline: none; }
-    button { border: 0; padding: 10px 16px; background: var(--accent-gradient); color: #fff; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25); }
-    button:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4); }
-    button.secondary { background: var(--panel-soft); color: var(--text); box-shadow: none; border: 1px solid var(--line); }
-    button.secondary:hover { background: var(--line); }
-    button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); box-shadow: none; }
-    button.ghost:hover { border-color: var(--muted); }
-    button.danger { background: var(--bad); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25); }
-    button.danger:hover { box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4); }
-    button:disabled { opacity: 0.6; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
-    
-    input, textarea, select { width: 100%; border: 1px solid var(--line); background: var(--panel-soft); color: var(--text); padding: 12px 14px; font-size: 14px; }
-    input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); background: var(--panel-solid); }
-    textarea { min-height: 100px; resize: vertical; }
-    
-    .page { display: none; gap: 24px; min-width: 0; animation: fadeInUp 0.4s ease-out; }
+    main { min-width: 0; max-width: 100%; overflow-x: hidden; padding: 22px; display: grid; gap: 16px; align-content: start; }
+    header { min-width: 0; display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; border-bottom: 1px solid var(--line); padding-bottom: 14px; }
+    h2, h3 { margin: 0; letter-spacing: 0; }
+    h2 { font-size: 26px; }
+    h3 { font-size: 17px; }
+    button, input, textarea, select { font: inherit; border-radius: 8px; }
+    button { border: 0; padding: 10px 13px; background: var(--accent); color: #fff; cursor: pointer; }
+    button.secondary { background: #334155; }
+    button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+    button.danger { background: var(--bad); }
+    button:disabled { opacity: .65; cursor: wait; }
+    input, textarea, select { width: 100%; border: 1px solid var(--line); background: var(--panel); color: var(--text); padding: 11px 12px; }
+    textarea { min-height: 92px; resize: vertical; }
+    .page { display: none; gap: 16px; min-width: 0; }
     .page.active { display: grid; }
-    
-    .panel {
-      min-width: 0; padding: 24px;
-      background: var(--panel); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
-      border: 1px solid var(--panel-border); border-radius: 20px; box-shadow: var(--shadow);
-    }
-    .grid { min-width: 0; display: grid; gap: 16px; }
+    .panel { min-width: 0; padding: 18px; }
+    .grid { min-width: 0; display: grid; gap: 12px; }
     .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    
-    /* Stats Grid */
-    .stats { min-width: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; }
-    .stat {
-      background: var(--panel); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
-      border: 1px solid var(--panel-border); border-radius: 16px; padding: 20px;
-      box-shadow: var(--shadow); transition: transform 0.2s;
-    }
-    .stat:hover { transform: translateY(-4px); box-shadow: var(--shadow-hover); }
-    .stat b { display: block; font-size: 32px; font-weight: 800; margin-bottom: 4px; letter-spacing: -0.02em; }
-    
-    /* Workspace Card */
-    .workspace-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center; }
-    .workspace-title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-    .workspace-title h3 { font-size: 24px; }
-    
-    .model-grid { display: grid; gap: 10px; margin-top: 16px; }
-    .model-option {
-      display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: start;
-      border: 1px solid var(--line); border-radius: 12px; padding: 14px;
-      background: var(--panel-soft); cursor: pointer; transition: all 0.2s;
-    }
-    .model-option:hover { border-color: var(--accent); background: rgba(59, 130, 246, 0.05); }
-    .model-option input { width: auto; margin-top: 4px; cursor: pointer; }
-    .advanced-models { margin-top: 16px; }
-    .advanced-models summary { cursor: pointer; color: var(--accent); font-weight: 600; outline: none; }
-    
-    .list { display: grid; gap: 10px; }
-    .list-item {
-      border: 1px solid var(--line); background: var(--panel-soft); border-radius: 14px;
-      padding: 16px; display: grid; gap: 8px; cursor: pointer; transition: all 0.2s;
-    }
-    .list-item:hover { border-color: var(--muted); transform: scale(1.01); }
-    .list-item.active { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); background: rgba(59, 130, 246, 0.05); }
-    
-    .toolbar, .actions, .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .stats { min-width: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+    .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+    .stat b { display: block; font-size: 25px; margin-bottom: 6px; }
+    .workspace-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+    .workspace-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .model-grid { display: grid; gap: 8px; margin-top: 12px; }
+    .model-option { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; border: 1px solid var(--line); border-radius: 8px; padding: 11px; background: var(--panel); cursor: pointer; }
+    .model-option input { width: auto; margin-top: 3px; }
+    .advanced-models { margin-top: 12px; }
+    .advanced-models summary { cursor: pointer; color: var(--muted); }
+    .list { display: grid; gap: 8px; }
+    .list-item { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 12px; display: grid; gap: 7px; cursor: pointer; }
+    .list-item.active { border-color: rgba(37, 99, 235, .55); box-shadow: 0 0 0 3px rgba(37, 99, 235, .09); }
+    .toolbar, .actions, .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
     .row { justify-content: space-between; }
-    .actions { margin-top: 16px; }
-    
-    .tag {
-      display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line);
-      color: var(--muted); background: var(--panel-soft); border-radius: 99px; padding: 4px 10px; font-size: 12px; font-weight: 600;
-    }
-    .tag.ok { color: var(--ok); background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.2); }
-    .tag.bad { color: var(--bad); background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); }
-    .tag.warn { color: var(--warn); background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.2); }
-    
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
-    
-    /* Table Redesign */
-    .table-wrap {
-      max-width: 100%; overflow-x: auto; overflow-y: hidden;
-      border: 1px solid var(--line); border-radius: 16px; background: var(--panel-solid); margin-top: 16px;
-    }
+    .tag { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); color: var(--muted); border-radius: 999px; padding: 4px 8px; font-size: 12px; }
+    .tag.ok { color: var(--ok); border-color: rgba(15, 159, 110, .35); }
+    .tag.bad { color: var(--bad); border-color: rgba(214, 69, 69, .35); }
+    .tag.warn { color: var(--warn); border-color: rgba(183, 121, 31, .35); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .table-wrap { max-width: 100%; overflow-x: auto; overflow-y: hidden; border: 1px solid var(--line); border-radius: 8px; }
     table { width: 100%; border-collapse: collapse; min-width: 960px; }
-    th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 16px 14px; font-size: 13px; vertical-align: middle; }
-    th { color: var(--muted); background: var(--panel-soft); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
-    tr:not(:first-child):hover td { background: var(--panel-soft); }
+    th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 11px 10px; font-size: 13px; vertical-align: middle; }
+    th { color: var(--muted); background: var(--panel-soft); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
     tr:last-child td { border-bottom: 0; }
-    
-    .status { min-height: 20px; color: var(--muted); font-size: 14px; font-weight: 500; margin-top: 8px; }
-    .key-row {
-      display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: center;
-      border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; background: var(--panel-solid);
-    }
-    .empty { border: 2px dashed var(--line); border-radius: 16px; padding: 40px; color: var(--muted); text-align: center; font-weight: 500; }
-    
-    /* Bars for Models */
-    .bars { display: grid; gap: 12px; }
-    .bar { display: grid; grid-template-columns: 140px minmax(0, 1fr) 70px; gap: 12px; align-items: center; font-size: 13px; font-weight: 500; }
-    .track { height: 10px; border-radius: 99px; background: var(--line); overflow: hidden; }
-    .track i { display: block; height: 100%; background: var(--accent-gradient); border-radius: 99px; transition: width 0.5s ease-out; }
-    
-    /* Modals */
-    .modal-backdrop {
-      position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px;
-      background: rgba(11, 13, 23, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-      opacity: 1; transition: opacity 0.3s;
-    }
-    .modal-backdrop.hidden { opacity: 0; pointer-events: none; }
-    .modal {
-      width: min(520px, 100%); max-height: min(90vh, 800px); overflow-y: auto;
-      background: var(--panel-solid); border: 1px solid var(--panel-border); border-radius: 24px;
-      box-shadow: 0 40px 100px rgba(0,0,0,0.4); padding: 32px; display: grid; gap: 20px;
-      transform: scale(1); transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    }
-    .modal-backdrop.hidden .modal { transform: scale(0.95); }
+    .status { min-height: 20px; color: var(--muted); font-size: 13px; }
+    .key-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 9px; }
+    .empty { border: 1px dashed var(--line); border-radius: 8px; padding: 24px; color: var(--muted); text-align: center; }
+    .bars { display: grid; gap: 8px; }
+    .bar { display: grid; grid-template-columns: 140px minmax(0, 1fr) 70px; gap: 10px; align-items: center; }
+    .track { height: 8px; border-radius: 99px; background: var(--panel-soft); overflow: hidden; }
+    .track i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--ok)); }
+    .modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 18px; background: rgba(15, 23, 42, .48); }
+    .modal { width: min(520px, 100%); max-height: min(86vh, 760px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 28px 80px rgba(15, 23, 42, .28); padding: 18px; display: grid; gap: 14px; }
     .modal.wide { width: min(760px, 100%); }
-    .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-    .modal-head h3 { font-size: 24px; font-weight: 800; margin: 0; }
-    
-    /* Animations */
-    @keyframes pulse { 0% { opacity: 0.1; transform: scale(1); } 100% { opacity: 0.25; transform: scale(1.1); } }
-    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
-    
-    @media (max-width: 1280px) { .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    @media (max-width: 1180px) { .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
     @media (max-width: 1040px) {
       .shell { grid-template-columns: minmax(0, 1fr); }
       .grid.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      main { padding: 24px; }
     }
     @media (max-width: 760px) {
-      .shell { display: block; min-height: 100vh; padding-top: 60px; }
+      .shell { display: block; min-height: 100vh; padding-top: 52px; }
       .mobile-bar {
-        position: fixed; inset: 0 0 auto 0; z-index: 40; display: flex; align-items: center; justify-content: space-between; gap: 12px;
-        height: 60px; padding: 0 16px; border-bottom: 1px solid var(--line);
-        background: var(--panel); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+        position: fixed;
+        inset: 0 0 auto 0;
+        z-index: 6;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        height: 52px;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--line);
+        background: color-mix(in srgb, var(--panel) 94%, transparent);
+        backdrop-filter: blur(14px);
       }
-      .mobile-title { min-width: 0; display: flex; align-items: center; gap: 12px; font-weight: 800; font-size: 16px; }
-      .mobile-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: #fff; background: var(--accent-gradient); }
-      #menu-toggle { width: 40px; height: 40px; padding: 0; border-radius: 10px; background: var(--panel-soft); color: var(--text); border: 1px solid var(--line); display: grid; place-items: center; }
-      #menu-toggle::before { content: "☰"; font-size: 20px; line-height: 1; }
-      
-      .scrim { position: fixed; inset: 0; z-index: 45; display: block; background: rgba(11, 13, 23, 0.6); backdrop-filter: blur(4px); opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+      .mobile-title { min-width: 0; display: flex; align-items: center; gap: 9px; font-weight: 800; }
+      .mobile-title span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .mobile-mark {
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        flex: 0 0 auto;
+        border-radius: 8px;
+        color: #fff;
+        background: var(--accent);
+      }
+      #menu-toggle {
+        width: 38px;
+        height: 36px;
+        padding: 0;
+        display: grid;
+        place-items: center;
+        background: var(--panel-soft);
+        color: var(--text);
+        border: 1px solid var(--line);
+      }
+      #menu-toggle::before { content: "☰"; font-size: 18px; line-height: 1; }
+      .scrim {
+        position: fixed;
+        inset: 0;
+        z-index: 7;
+        display: block;
+        background: rgba(15, 23, 42, 0.42);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 180ms ease;
+      }
       aside {
-        position: fixed; top: 0; bottom: 0; left: 0; z-index: 50; width: min(85vw, 320px); height: 100vh;
-        transform: translateX(-102%); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-        box-shadow: 20px 0 60px rgba(0,0,0,0.3);
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 8;
+        width: min(82vw, 300px);
+        height: 100vh;
+        transform: translateX(-102%);
+        transition: transform 220ms ease;
+        border-right: 1px solid var(--line);
+        border-bottom: 0;
+        box-shadow: 18px 0 42px rgba(15, 23, 42, 0.16);
       }
       .shell.menu-open aside { transform: translateX(0); }
       .shell.menu-open .scrim { opacity: 1; pointer-events: auto; }
-      
-      header { display: grid; gap: 16px; }
+      nav { grid-template-columns: 1fr; }
+      .nav-btn { justify-content: flex-start; white-space: normal; }
+      aside .ghost, aside .danger { width: 100%; }
+      header { display: grid; }
       .stats, .grid.two, .grid.three { grid-template-columns: 1fr; }
       .bar { grid-template-columns: 1fr; }
       .workspace-card { grid-template-columns: 1fr; }
-      .modal { padding: 24px; border-radius: 16px; }
+    }
+    @media (max-width: 420px) {
+      main { padding: 12px; }
+      .mobile-bar { height: 48px; padding: 6px 10px; }
+      .shell { padding-top: 48px; }
+      aside { width: min(86vw, 292px); padding: 16px 12px; }
+      .actions { display: grid; grid-template-columns: 1fr; }
+      .actions button { width: 100%; }
+    }
+    @supports not (background: color-mix(in srgb, white, transparent)) {
+      @media (max-width: 760px) { .mobile-bar { background: var(--panel); } }
     }
   </style>
 </head>
@@ -2465,66 +2422,66 @@ function renderAdminPageV2(): string {
   <section id="gate" class="gate">
     <div class="gate-card">
       <div>
-        <h1>HYHub Admin</h1>
-        <p class="muted" style="margin-top:12px">Secure Gateway Console</p>
+        <h1>HYHub</h1>
+        <p class="muted">输入管理员密钥进入后台。</p>
       </div>
-      <input id="token" type="password" placeholder="Enter Admin Token" />
-      <button id="gate-submit">Authenticate</button>
+      <input id="token" type="password" placeholder="管理员密钥" />
+      <button id="gate-submit">进入后台</button>
       <div class="status" id="gate-status"></div>
     </div>
   </section>
 
   <section id="app" class="shell hidden">
     <div class="mobile-bar">
-      <div class="mobile-title"><span class="mobile-mark">H</span><span id="mobile-page-title">Dashboard</span></div>
-      <button id="menu-toggle" aria-label="Open menu" aria-expanded="false"></button>
+      <div class="mobile-title"><span class="mobile-mark">H</span><span id="mobile-page-title">仪表盘</span></div>
+      <button id="menu-toggle" aria-label="打开菜单" aria-expanded="false"></button>
     </div>
     <div id="menu-scrim" class="scrim"></div>
     <aside>
       <div class="brand">
         <h1>HYHub</h1>
-        <p class="muted">Gateway Control Plane</p>
+        <p class="muted">项目隔离的 API Hub</p>
       </div>
       <nav>
-        <button class="nav-btn active" data-page="dashboard">Dashboard</button>
-        <button class="nav-btn" data-page="projects">Workspaces</button>
-        <button class="nav-btn" data-page="settings">Configuration</button>
+        <button class="nav-btn active" data-page="dashboard">仪表盘</button>
+        <button class="nav-btn" data-page="projects">项目</button>
+        <button class="nav-btn" data-page="settings">设置</button>
       </nav>
       <div class="side-section">
-        <div class="side-head"><span>ACTIVE WORKSPACE</span><button class="ghost icon-btn" id="new-project" title="New Workspace">+</button></div>
+        <div class="side-head"><span>当前项目</span><button class="ghost icon-btn" id="new-project" title="新建项目">+</button></div>
         <div id="project-switcher" class="project-switcher"></div>
       </div>
       <div class="sidebar-actions">
-        <button class="secondary" id="reload">Refresh Data</button>
-        <button class="danger" id="logout">Sign Out</button>
+        <button class="ghost" id="reload">刷新</button>
+        <button class="danger" id="logout">退出</button>
       </div>
     </aside>
     <main>
       <header>
         <div>
-          <h2 id="page-title">Dashboard</h2>
-          <div class="muted" id="page-desc">Overview of global node health and traffic.</div>
+          <h2 id="page-title">仪表盘</h2>
+          <div class="muted" id="page-desc">查看整体项目、账号池和调用健康。</div>
         </div>
-        <div class="toolbar"><span class="tag" id="current-project-pill">No Workspace</span><span class="tag mono" id="base-url"></span></div>
+        <div class="toolbar"><span class="tag" id="current-project-pill">未选择项目</span><span class="tag mono" id="base-url"></span></div>
       </header>
 
       <section id="page-dashboard" class="page active">
         <div class="stats">
-          <div class="stat"><b id="dash-projects">0</b><span class="muted">Workspaces</span></div>
-          <div class="stat"><b id="dash-accounts">0</b><span class="muted">Total Nodes</span></div>
-          <div class="stat"><b id="dash-available">0</b><span class="muted">Active Nodes</span></div>
-          <div class="stat"><b id="dash-action">0</b><span class="muted">Needs Action</span></div>
-          <div class="stat"><b id="dash-calls">0</b><span class="muted">API Calls</span></div>
-          <div class="stat"><b id="dash-errors">0</b><span class="muted">Errors</span></div>
+          <div class="stat"><b id="dash-projects">0</b><span class="muted">项目</span></div>
+          <div class="stat"><b id="dash-accounts">0</b><span class="muted">账号</span></div>
+          <div class="stat"><b id="dash-available">0</b><span class="muted">可用账号</span></div>
+          <div class="stat"><b id="dash-action">0</b><span class="muted">待处理</span></div>
+          <div class="stat"><b id="dash-calls">0</b><span class="muted">调用</span></div>
+          <div class="stat"><b id="dash-errors">0</b><span class="muted">失败</span></div>
         </div>
         <div class="grid two">
           <section class="panel">
-            <div class="row"><h3>Workspace Overview</h3><span class="muted">By Node Count</span></div>
-            <div id="dashboard-projects" class="list" style="margin-top:20px"></div>
+            <div class="row"><h3>项目概览</h3><span class="muted">按账号数量排序</span></div>
+            <div id="dashboard-projects" class="list" style="margin-top:12px"></div>
           </section>
           <section class="panel">
-            <div class="row"><h3>24h Model Traffic</h3><span class="muted">Live Analytics</span></div>
-            <div id="model-health" class="bars" style="margin-top:20px"></div>
+            <div class="row"><h3>最近 24 小时模型健康</h3><span class="muted">来自真实调用统计</span></div>
+            <div id="model-health" class="bars" style="margin-top:12px"></div>
           </section>
         </div>
       </section>
@@ -2534,24 +2491,24 @@ function renderAdminPageV2(): string {
             <div class="panel">
               <div class="workspace-card">
                 <div>
-                  <div class="workspace-title"><h3 id="workspace-project-name">Current Workspace</h3><span class="tag" id="selected-project-tag">Unselected</span></div>
-                  <div class="muted" id="workspace-project-meta" style="margin-top:8px"></div>
+                  <div class="workspace-title"><h3 id="workspace-project-name">当前项目</h3><span class="tag" id="selected-project-tag">未选择</span></div>
+                  <div class="muted" id="workspace-project-meta" style="margin-top:6px"></div>
                 </div>
-                <div class="actions" style="margin-top:0">
-                  <button id="edit-project" class="secondary">Edit</button>
-                  <button id="delete-project" class="danger">Delete</button>
+                <div class="actions">
+                  <button id="edit-project" class="ghost">编辑项目</button>
+                  <button id="delete-project" class="danger">删除项目</button>
                 </div>
               </div>
               <div class="status" id="project-status"></div>
             </div>
             <div class="panel">
-              <div class="row"><h3>Upstream Node Pool</h3><div class="actions" style="margin-top:0"><button id="new-account">Add Node</button><button id="test-project-accounts" class="secondary">Test All Nodes</button></div></div>
+              <div class="row"><h3>上游账号池</h3><div class="actions"><button id="new-account">添加账号</button><button id="test-project-accounts" class="secondary">检测当前项目</button></div></div>
               <div class="actions">
-                <button id="batch-enable" class="ghost">Enable All</button>
-                <button id="batch-disable" class="ghost">Disable All</button>
+                <button id="batch-enable" class="ghost">批量启用</button>
+                <button id="batch-disable" class="ghost">批量停用</button>
               </div>
               <div class="status" id="account-status"></div>
-              <div id="accounts-table" style="margin-top:20px"></div>
+              <div id="accounts-table" style="margin-top:12px"></div>
             </div>
         </section>
       </section>
@@ -2559,44 +2516,39 @@ function renderAdminPageV2(): string {
       <section id="page-settings" class="page">
         <div class="grid two">
           <section class="panel">
-            <h3>Workspace API Keys</h3>
-            <p class="muted">Clients use these keys with the Base URL to authenticate.</p>
-            <div class="tag" id="settings-project-label" style="margin-top:12px">Current Workspace</div>
+            <h3>项目 API Key</h3>
+            <p class="muted">客户端使用 Base URL 加项目 API Key 调用 /v1/*。AUTH_TOKEN 只用于管理员登录。</p>
+            <div class="tag" id="settings-project-label">当前项目</div>
             <div class="actions">
-              <button id="create-key">Generate Key</button>
-              <button id="copy-base-url" class="secondary">Copy Base URL</button>
+              <button id="create-key">创建 API Key</button>
+              <button id="copy-base-url" class="secondary">复制 Base URL</button>
             </div>
-            <div id="project-keys" class="list" style="margin-top:20px"></div>
+            <div id="project-keys" class="list" style="margin-top:12px"></div>
             <div class="status" id="key-status"></div>
           </section>
           <section class="panel">
-            <h3>Routing Strategy</h3>
-            <div class="grid two" style="margin-top:20px">
-              <div>
-                <label class="muted" style="display:block;margin-bottom:8px;font-size:12px">Max Retries Per Request</label>
-                <input id="max-retry-accounts" type="number" min="1" max="20" step="1" placeholder="e.g. 3" />
-              </div>
-              <div style="display:flex;align-items:flex-end">
-                <label class="toolbar" style="padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel-soft);width:100%"><input id="disable-on-failure" type="checkbox" style="width:auto" /> Auto-disable on failure</label>
-              </div>
+            <h3>路由策略</h3>
+            <div class="grid two" style="margin-top:12px">
+              <input id="max-retry-accounts" type="number" min="1" max="20" step="1" placeholder="失败重试账号数" />
+              <label class="toolbar"><input id="disable-on-failure" type="checkbox" /> 真实代理失败后自动停用账号</label>
             </div>
-            <div class="actions"><button id="save-routing">Save Strategy</button></div>
+            <div class="actions"><button id="save-routing">保存路由策略</button></div>
             <div class="status" id="routing-status"></div>
           </section>
           <section class="panel">
-            <h3>Exposed Models</h3>
-            <p class="muted">Configure which models are available to clients in this workspace.</p>
-            <div id="enabled-models-summary" class="muted" style="margin-top:16px;padding:12px;background:var(--panel-soft);border-radius:10px"></div>
+            <h3>开放模型</h3>
+            <p class="muted">模型跟随侧边栏当前项目。客户端使用 项目ID/模型名，例如 example/gpt-5.5。</p>
+            <div id="enabled-models-summary" class="muted" style="margin-top:10px"></div>
             <div class="actions">
-              <button id="open-model-manager">Manage Models</button>
+              <button id="open-model-manager">管理开放模型</button>
             </div>
             <div class="status" id="model-status"></div>
           </section>
           <section class="panel">
-            <h3>Data Operations</h3>
-            <p class="muted">Import/Export nodes or reset traffic analytics.</p>
+            <h3>导入 / 导出 / 统计</h3>
+            <p class="muted">导入导出作用于侧边栏当前项目账号池；清空统计只清真实 API 调用统计。</p>
             <div class="actions">
-              <button id="open-ops-modal" class="secondary">Open Operations Tools</button>
+              <button id="open-ops-modal" class="secondary">打开数据操作</button>
             </div>
             <div class="status" id="ops-status"></div>
           </section>
@@ -2609,19 +2561,19 @@ function renderAdminPageV2(): string {
     <div class="modal">
       <div class="modal-head">
         <div>
-          <h3 id="project-modal-title">New Workspace</h3>
-          <p class="muted" id="project-modal-desc" style="margin:8px 0 0">Workspaces isolate node pools, API keys, and models.</p>
+          <h3 id="project-modal-title">新建项目</h3>
+          <p class="muted" id="project-modal-desc" style="margin:6px 0 0">项目会成为全局工作区，账号池、API Key 和模型都跟随项目切换。</p>
         </div>
-        <button id="close-project-modal" class="ghost icon-btn" aria-label="Close">×</button>
+        <button id="close-project-modal" class="ghost icon-btn" aria-label="关闭">×</button>
       </div>
       <div class="grid two">
-        <input id="project-id" placeholder="Workspace ID (e.g. prod)" />
-        <input id="project-name" placeholder="Display Name" />
+        <input id="project-id" placeholder="项目 ID，例如 example" />
+        <input id="project-name" placeholder="项目名称" />
       </div>
-      <label class="toolbar" style="padding:12px;background:var(--panel-soft);border-radius:10px"><input id="project-enabled" type="checkbox" checked style="width:auto" /> Workspace Enabled</label>
-      <div class="actions" style="margin-top:24px;justify-content:flex-end">
-        <button id="cancel-project-modal" class="ghost">Cancel</button>
-        <button id="save-project">Save Workspace</button>
+      <label class="toolbar"><input id="project-enabled" type="checkbox" checked /> 启用项目</label>
+      <div class="actions">
+        <button id="save-project">保存项目</button>
+        <button id="cancel-project-modal" class="ghost">取消</button>
       </div>
     </div>
   </div>
@@ -2630,25 +2582,23 @@ function renderAdminPageV2(): string {
     <div class="modal wide">
       <div class="modal-head">
         <div>
-          <h3 id="account-modal-title">Add Upstream Node</h3>
-          <p class="muted" style="margin:8px 0 0">Node will be added to the active workspace pool.</p>
+          <h3 id="account-modal-title">添加账号</h3>
+          <p class="muted" style="margin:6px 0 0">账号会加入侧边栏当前项目的上游账号池。</p>
         </div>
-        <button id="close-account-modal" class="ghost icon-btn" aria-label="Close">×</button>
+        <button id="close-account-modal" class="ghost icon-btn" aria-label="关闭">×</button>
       </div>
       <div class="grid two">
-        <div><label class="muted" style="font-size:12px;margin-bottom:6px;display:block">Node ID</label><input id="account-id" placeholder="Auto-generated if empty" /></div>
-        <div><label class="muted" style="font-size:12px;margin-bottom:6px;display:block">Label</label><input id="account-label" placeholder="Display Name" /></div>
-        <div style="grid-column:1/-1"><label class="muted" style="font-size:12px;margin-bottom:6px;display:block">Upstream Base URL</label><input id="account-base-url" placeholder="e.g. https://api.openai.com" /></div>
-        <div style="grid-column:1/-1"><label class="muted" style="font-size:12px;margin-bottom:6px;display:block">API Key</label><input id="account-api-key" placeholder="Required for new nodes" /></div>
-        <div><label class="muted" style="font-size:12px;margin-bottom:6px;display:block">Weight</label><input id="account-weight" type="number" min="1" max="20" step="1" placeholder="1-20 (Default: 1)" /></div>
-        <div><label class="muted" style="font-size:12px;margin-bottom:6px;display:block">Status</label><select id="account-enabled"><option value="true">Enabled</option><option value="false">Disabled</option></select></div>
+        <input id="account-id" placeholder="账号 ID（可留空）" />
+        <input id="account-label" placeholder="显示名称" />
+        <input id="account-base-url" placeholder="上游 Base URL" />
+        <input id="account-api-key" placeholder="上游 API Key（新账号必填，编辑时留空则保持不变）" />
+        <input id="account-weight" type="number" min="1" max="20" step="1" placeholder="权重 1-20" />
+        <select id="account-enabled"><option value="true">启用</option><option value="false">停用</option></select>
       </div>
-      <div>
-        <label class="muted" style="font-size:12px;margin-bottom:6px;display:block">Extra Headers (JSON)</label>
-        <textarea id="account-extra-headers" placeholder='{"OpenAI-Organization":"org_xxx"}'></textarea>
-      </div>
-      <div class="actions" style="margin-top:24px;justify-content:flex-end">
-        <button id="save-account">Save Node</button>
+      <textarea id="account-extra-headers" placeholder='额外请求头 JSON，例如 {"OpenAI-Organization":"org_xxx"}'></textarea>
+      <div class="actions">
+        <button id="save-account">保存账号</button>
+        <button id="cancel-account-modal" class="ghost">取消</button>
       </div>
     </div>
   </div>
@@ -2657,35 +2607,25 @@ function renderAdminPageV2(): string {
     <div class="modal wide">
       <div class="modal-head">
         <div>
-          <h3>Exposed Models</h3>
-          <p class="muted" style="margin:8px 0 0">Manage available models for this workspace.</p>
+          <h3>开放模型</h3>
+          <p class="muted" style="margin:6px 0 0">从当前项目账号池拉取模型，勾选后保存。对外模型名会自动加项目前缀。</p>
         </div>
-        <button id="close-model-modal" class="ghost icon-btn" aria-label="Close">×</button>
+        <button id="close-model-modal" class="ghost icon-btn" aria-label="关闭">×</button>
       </div>
-      <textarea id="open-models" class="hidden" style="display:none"></textarea>
-      <div class="grid two" style="margin-bottom:12px">
-        <div>
-          <label class="muted" style="font-size:12px;margin-bottom:6px;display:block">Discovery Node Limit</label>
-          <input id="model-discovery-limit" type="number" min="1" max="50" step="1" value="8" />
-        </div>
-        <div>
-          <label class="muted" style="font-size:12px;margin-bottom:6px;display:block">Test Model</label>
-          <input id="api-test-model" placeholder="Default: gpt-4.1-mini" />
-        </div>
+      <textarea id="open-models" class="hidden" placeholder="一行一个模型"></textarea>
+      <div class="grid two">
+        <input id="model-discovery-limit" type="number" min="1" max="50" step="1" value="8" placeholder="扫描账号数" />
+        <input id="api-test-model" placeholder="账号检测模型，默认 gpt-4.1-mini" />
       </div>
-      <div class="row">
-        <div style="flex:1"><input id="model-search-filter" placeholder="Search models..." /></div>
-        <button id="discover-models" class="secondary">Auto Discover</button>
+      <div class="actions">
+        <button id="discover-models" class="secondary">从账号池拉取模型</button>
+        <button id="save-models">保存开放模型</button>
       </div>
-      <div id="model-picker" class="list" style="max-height:300px;overflow-y:auto;padding:4px"></div>
+      <div id="discovered-models" class="model-grid"></div>
       <details class="advanced-models">
-        <summary>Advanced: Custom Models List</summary>
-        <p class="muted" style="font-size:13px;margin:8px 0">One model per line or comma-separated.</p>
-        <textarea id="open-models-advanced" placeholder="gpt-3.5-turbo&#10;gpt-4"></textarea>
+        <summary>高级：手动编辑模型列表</summary>
+        <textarea id="open-models-advanced" placeholder="一行一个模型，例如 gpt-5.5"></textarea>
       </details>
-      <div class="actions" style="margin-top:24px;justify-content:flex-end">
-        <button id="save-models">Save Configuration</button>
-      </div>
     </div>
   </div>
 
@@ -2693,19 +2633,15 @@ function renderAdminPageV2(): string {
     <div class="modal">
       <div class="modal-head">
         <div>
-          <h3>Data Operations</h3>
-          <p class="muted" style="margin:8px 0 0">Import/Export workspace nodes.</p>
+          <h3>数据操作</h3>
+          <p class="muted" style="margin:6px 0 0">这些操作作用于侧边栏当前项目，清空统计会影响全局真实调用统计。</p>
         </div>
-        <button id="close-ops-modal" class="ghost icon-btn" aria-label="Close">×</button>
+        <button id="close-ops-modal" class="ghost icon-btn" aria-label="关闭">×</button>
       </div>
-      <div class="grid">
-        <button id="export-accounts" class="secondary">Export Nodes (JSON)</button>
-        <textarea id="import-data" placeholder="Paste nodes JSON array here..."></textarea>
-        <button id="import-accounts" class="secondary">Import Nodes</button>
-      </div>
-      <div style="margin-top:16px;padding-top:24px;border-top:1px solid var(--line)">
-        <h4 style="margin:0 0 12px;font-size:14px">Danger Zone</h4>
-        <button id="reset-stats" class="danger">Reset Live Analytics</button>
+      <div class="actions">
+        <button id="export-accounts" class="secondary">导出账号</button>
+        <button id="import-accounts" class="secondary">导入账号</button>
+        <button id="reset-stats" class="danger">清空统计</button>
       </div>
     </div>
   </div>
@@ -2741,9 +2677,9 @@ function renderAdminPageV2(): string {
       opsModal: document.getElementById("ops-modal"),
     };
     const pageMeta = {
-      dashboard: ["Dashboard", "Overview of global node health and traffic."],
-      projects: ["Workspaces", "Manage workspace node pools."],
-      settings: ["Configuration", "Manage keys, policies, models and ops."],
+      dashboard: ["仪表盘", "查看整体项目、账号池和调用健康。"],
+      projects: ["项目", "切换项目并管理这个项目自己的上游账号池。"],
+      settings: ["设置", "管理项目 API Key、路由策略、模型和导入导出。"],
     };
     let projects = [];
     let accounts = [];
@@ -2755,8 +2691,9 @@ function renderAdminPageV2(): string {
     let editingProjectId = null;
     let selectedProjectId = localStorage.getItem("hyhub-selected-project") || "default-rt";
     let selectedAccountIds = new Set();
-    if(els.token) els.token.value = localStorage.getItem("hyhub-admin-token") || "";
-    if(els.baseUrl) els.baseUrl.textContent = window.location.origin + "/v1";
+    els.token.value = localStorage.getItem("hyhub-admin-token") || "";
+    els.baseUrl.textContent = window.location.origin + "/v1";
+    document.getElementById("api-test-model").value = localStorage.getItem("hyhub-api-test-model") || "gpt-4.1-mini";
 
     function getToken() { return els.token.value.trim(); }
     function status(el, message, danger) { el.textContent = message || ""; el.style.color = danger ? "var(--bad)" : "var(--muted)"; }
