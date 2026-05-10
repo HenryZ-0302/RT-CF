@@ -2252,7 +2252,7 @@ function renderAdminPageV2(): string {
     body.menu-lock { overflow: hidden; }
     .hidden { display: none !important; }
     .gate { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
-    .gate-card, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
+    .gate-card, .panel { background: var(--panel); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
     .gate-card { width: min(440px, 100%); padding: 28px; display: grid; gap: 14px; }
     .shell { min-height: 100vh; display: grid; grid-template-columns: 276px minmax(0, 1fr); width: 100%; overflow-x: clip; }
     .mobile-bar { display: none; }
@@ -2278,12 +2278,14 @@ function renderAdminPageV2(): string {
     h2 { font-size: 26px; }
     h3 { font-size: 17px; }
     button, input, textarea, select { font: inherit; border-radius: 8px; }
-    button { border: 0; padding: 10px 13px; background: var(--accent); color: #fff; cursor: pointer; }
+    button { border: 0; padding: 10px 13px; background: var(--accent); color: #fff; cursor: pointer; transition: transform 120ms ease, box-shadow 120ms ease; }
+    button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59,130,246,0.25); }
     button.secondary { background: #334155; }
     button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
     button.danger { background: var(--bad); }
     button:disabled { opacity: .65; cursor: wait; }
-    input, textarea, select { width: 100%; border: 1px solid var(--line); background: var(--panel); color: var(--text); padding: 11px 12px; }
+    input, textarea, select { width: 100%; border: 1px solid var(--line); background: var(--panel); color: var(--text); padding: 11px 12px; border-radius: 10px; transition: border-color 150ms ease, box-shadow 150ms ease; }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.12); }
     textarea { min-height: 92px; resize: vertical; }
     .page { display: none; gap: 16px; min-width: 0; }
     .page.active { display: grid; }
@@ -2323,8 +2325,9 @@ function renderAdminPageV2(): string {
     .bar { display: grid; grid-template-columns: 140px minmax(0, 1fr) 70px; gap: 10px; align-items: center; }
     .track { height: 8px; border-radius: 99px; background: var(--panel-soft); overflow: hidden; }
     .track i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--ok)); }
-    .modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 18px; background: rgba(15, 23, 42, .48); }
-    .modal { width: min(520px, 100%); max-height: min(86vh, 760px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 28px 80px rgba(15, 23, 42, .28); padding: 18px; display: grid; gap: 14px; }
+    .modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 18px; background: rgba(15,23,42,0.48); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+    .modal { width: min(520px, 100%); max-height: min(86vh, 760px); overflow: auto; background: var(--panel); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 28px 80px rgba(15,23,42,0.28); padding: 18px; display: grid; gap: 14px; animation: modalIn 200ms ease-out; }
+    @keyframes modalIn { from { opacity: 0; transform: scale(0.96) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
     .modal.wide { width: min(760px, 100%); }
     .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
     @media (max-width: 1180px) { .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
