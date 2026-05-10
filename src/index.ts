@@ -2254,15 +2254,24 @@ function renderAdminPageV2(): string {
     .gate { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
     .gate-card, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
     .gate-card { width: min(440px, 100%); padding: 28px; display: grid; gap: 14px; }
-    .shell { min-height: 100vh; display: grid; grid-template-columns: 236px minmax(0, 1fr); width: 100%; overflow-x: clip; }
+    .shell { min-height: 100vh; display: grid; grid-template-columns: 276px minmax(0, 1fr); width: 100%; overflow-x: clip; }
     .mobile-bar { display: none; }
     .scrim { display: none; }
-    aside { position: sticky; top: 0; height: 100vh; min-width: 0; overflow-y: auto; border-right: 1px solid var(--line); background: var(--panel); padding: 20px 14px; display: flex; flex-direction: column; gap: 18px; }
+    aside { position: sticky; top: 0; height: 100vh; min-width: 0; overflow-y: auto; border-right: 1px solid var(--line); background: var(--panel); padding: 18px 14px; display: flex; flex-direction: column; gap: 16px; }
     .brand h1 { margin: 0 0 6px; font-size: 25px; letter-spacing: 0; }
     .brand p, .muted { color: var(--muted); line-height: 1.55; }
     nav { display: grid; gap: 8px; }
     .nav-btn { justify-content: flex-start; background: transparent; color: var(--text); border: 1px solid transparent; }
     .nav-btn.active { background: var(--panel-soft); border-color: var(--line); color: var(--accent); }
+    .side-section { border-top: 1px solid var(--line); padding-top: 14px; display: grid; gap: 10px; }
+    .side-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .side-head span { color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .icon-btn { width: 34px; height: 34px; padding: 0; display: grid; place-items: center; border-radius: 8px; }
+    .project-switcher { display: grid; gap: 7px; }
+    .project-item { width: 100%; text-align: left; display: grid; gap: 5px; padding: 10px; border: 1px solid transparent; background: transparent; color: var(--text); }
+    .project-item.active { border-color: rgba(37, 99, 235, .45); background: var(--panel-soft); color: var(--accent); }
+    .project-item .meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
+    .sidebar-actions { margin-top: auto; display: grid; gap: 8px; }
     main { min-width: 0; max-width: 100%; overflow-x: hidden; padding: 22px; display: grid; gap: 16px; align-content: start; }
     header { min-width: 0; display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; border-bottom: 1px solid var(--line); padding-bottom: 14px; }
     h2, h3 { margin: 0; letter-spacing: 0; }
@@ -2285,7 +2294,13 @@ function renderAdminPageV2(): string {
     .stats { min-width: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
     .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
     .stat b { display: block; font-size: 25px; margin-bottom: 6px; }
-    .layout-projects { min-width: 0; display: grid; grid-template-columns: 310px minmax(0, 1fr); gap: 16px; align-items: start; }
+    .workspace-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+    .workspace-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .model-grid { display: grid; gap: 8px; margin-top: 12px; }
+    .model-option { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; border: 1px solid var(--line); border-radius: 8px; padding: 11px; background: var(--panel); cursor: pointer; }
+    .model-option input { width: auto; margin-top: 3px; }
+    .advanced-models { margin-top: 12px; }
+    .advanced-models summary { cursor: pointer; color: var(--muted); }
     .list { display: grid; gap: 8px; }
     .list-item { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 12px; display: grid; gap: 7px; cursor: pointer; }
     .list-item.active { border-color: rgba(37, 99, 235, .55); box-shadow: 0 0 0 3px rgba(37, 99, 235, .09); }
@@ -2308,9 +2323,12 @@ function renderAdminPageV2(): string {
     .bar { display: grid; grid-template-columns: 140px minmax(0, 1fr) 70px; gap: 10px; align-items: center; }
     .track { height: 8px; border-radius: 99px; background: var(--panel-soft); overflow: hidden; }
     .track i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--ok)); }
+    .modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 18px; background: rgba(15, 23, 42, .48); }
+    .modal { width: min(520px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 28px 80px rgba(15, 23, 42, .28); padding: 18px; display: grid; gap: 14px; }
+    .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
     @media (max-width: 1180px) { .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
     @media (max-width: 1040px) {
-      .shell, .layout-projects { grid-template-columns: minmax(0, 1fr); }
+      .shell { grid-template-columns: minmax(0, 1fr); }
       .grid.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 760px) {
@@ -2384,6 +2402,7 @@ function renderAdminPageV2(): string {
       header { display: grid; }
       .stats, .grid.two, .grid.three { grid-template-columns: 1fr; }
       .bar { grid-template-columns: 1fr; }
+      .workspace-card { grid-template-columns: 1fr; }
     }
     @media (max-width: 420px) {
       main { padding: 12px; }
@@ -2427,8 +2446,14 @@ function renderAdminPageV2(): string {
         <button class="nav-btn" data-page="projects">项目</button>
         <button class="nav-btn" data-page="settings">设置</button>
       </nav>
-      <button class="ghost" id="reload">刷新</button>
-      <button class="danger" id="logout">退出</button>
+      <div class="side-section">
+        <div class="side-head"><span>当前项目</span><button class="ghost icon-btn" id="new-project" title="新建项目">+</button></div>
+        <div id="project-switcher" class="project-switcher"></div>
+      </div>
+      <div class="sidebar-actions">
+        <button class="ghost" id="reload">刷新</button>
+        <button class="danger" id="logout">退出</button>
+      </div>
     </aside>
     <main>
       <header>
@@ -2436,7 +2461,7 @@ function renderAdminPageV2(): string {
           <h2 id="page-title">仪表盘</h2>
           <div class="muted" id="page-desc">查看整体项目、账号池和调用健康。</div>
         </div>
-        <span class="tag mono" id="base-url"></span>
+        <div class="toolbar"><span class="tag" id="current-project-pill">未选择项目</span><span class="tag mono" id="base-url"></span></div>
       </header>
 
       <section id="page-dashboard" class="page active">
@@ -2461,24 +2486,19 @@ function renderAdminPageV2(): string {
       </section>
 
       <section id="page-projects" class="page">
-        <div class="layout-projects">
-          <section class="panel">
-            <div class="row"><h3>项目</h3><button id="new-project" class="ghost">新建</button></div>
-            <div id="project-list" class="list" style="margin-top:12px"></div>
-            <div class="status" id="project-status"></div>
-          </section>
-          <section class="grid">
+        <section class="grid">
             <div class="panel">
-              <div class="row"><h3>项目信息</h3><span class="tag" id="selected-project-tag">未选择</span></div>
-              <div class="grid two" style="margin-top:12px">
-                <input id="project-id" placeholder="项目 ID（可留空）" />
-                <input id="project-name" placeholder="项目名称" />
+              <div class="workspace-card">
+                <div>
+                  <div class="workspace-title"><h3 id="workspace-project-name">当前项目</h3><span class="tag" id="selected-project-tag">未选择</span></div>
+                  <div class="muted" id="workspace-project-meta" style="margin-top:6px"></div>
+                </div>
+                <div class="actions">
+                  <button id="edit-project" class="ghost">编辑项目</button>
+                  <button id="delete-project" class="danger">删除项目</button>
+                </div>
               </div>
-              <label class="toolbar"><input id="project-enabled" type="checkbox" checked /> 启用项目</label>
-              <div class="actions">
-                <button id="save-project">保存项目</button>
-                <button id="delete-project" class="danger">删除项目</button>
-              </div>
+              <div class="status" id="project-status"></div>
             </div>
             <div class="panel">
               <div class="row"><h3>上游账号池</h3><button id="clear-account" class="ghost">清空表单</button></div>
@@ -2500,8 +2520,7 @@ function renderAdminPageV2(): string {
               <div class="status" id="account-status"></div>
               <div id="accounts-table" style="margin-top:12px"></div>
             </div>
-          </section>
-        </div>
+        </section>
       </section>
 
       <section id="page-settings" class="page">
@@ -2509,7 +2528,7 @@ function renderAdminPageV2(): string {
           <section class="panel">
             <h3>项目 API Key</h3>
             <p class="muted">客户端使用 Base URL 加项目 API Key 调用 /v1/*。AUTH_TOKEN 只用于管理员登录。</p>
-            <select id="settings-project"></select>
+            <div class="tag" id="settings-project-label">当前项目</div>
             <div class="actions">
               <button id="create-key">创建 API Key</button>
               <button id="copy-base-url" class="secondary">复制 Base URL</button>
@@ -2528,22 +2547,27 @@ function renderAdminPageV2(): string {
           </section>
           <section class="panel">
             <h3>开放模型</h3>
-            <p class="muted">模型按当前项目管理，对外显示为 项目ID/模型名，例如 example/gpt-5.5；转发上游时会自动去掉项目前缀。</p>
-            <textarea id="open-models" placeholder="一行一个模型"></textarea>
+            <p class="muted">从当前项目账号池拉取模型，勾选后对外显示为 项目ID/模型名，例如 example/gpt-5.5；转发上游时会自动去掉项目前缀。</p>
+            <textarea id="open-models" class="hidden" placeholder="一行一个模型"></textarea>
             <div class="grid two" style="margin-top:10px">
               <input id="model-discovery-limit" type="number" min="1" max="50" step="1" value="8" placeholder="扫描账号数" />
               <input id="api-test-model" placeholder="账号检测模型，默认 gpt-4.1-mini" />
             </div>
             <div class="actions">
-              <button id="discover-models" class="secondary">系统推荐模型</button>
+              <button id="discover-models" class="secondary">从账号池拉取模型</button>
               <button id="save-models">保存开放模型</button>
             </div>
-            <div id="discovered-models" class="list" style="margin-top:12px"></div>
+            <div id="enabled-models-summary" class="muted" style="margin-top:10px"></div>
+            <div id="discovered-models" class="model-grid"></div>
+            <details class="advanced-models">
+              <summary>高级：手动编辑模型列表</summary>
+              <textarea id="open-models-advanced" placeholder="一行一个模型，例如 gpt-5.5"></textarea>
+            </details>
             <div class="status" id="model-status"></div>
           </section>
           <section class="panel">
             <h3>导入 / 导出 / 统计</h3>
-            <p class="muted">导入导出作用于当前设置里选中的项目账号池；清空统计只清真实 API 调用统计。</p>
+            <p class="muted">导入导出作用于侧边栏当前项目账号池；清空统计只清真实 API 调用统计。</p>
             <div class="actions">
               <button id="export-accounts" class="secondary">导出账号</button>
               <button id="import-accounts" class="secondary">导入账号</button>
@@ -2555,6 +2579,27 @@ function renderAdminPageV2(): string {
       </section>
     </main>
   </section>
+
+  <div id="project-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h3 id="project-modal-title">新建项目</h3>
+          <p class="muted" id="project-modal-desc" style="margin:6px 0 0">项目会成为全局工作区，账号池、API Key 和模型都跟随项目切换。</p>
+        </div>
+        <button id="close-project-modal" class="ghost icon-btn" aria-label="关闭">×</button>
+      </div>
+      <div class="grid two">
+        <input id="project-id" placeholder="项目 ID，例如 example" />
+        <input id="project-name" placeholder="项目名称" />
+      </div>
+      <label class="toolbar"><input id="project-enabled" type="checkbox" checked /> 启用项目</label>
+      <div class="actions">
+        <button id="save-project">保存项目</button>
+        <button id="cancel-project-modal" class="ghost">取消</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     const els = {
@@ -2568,18 +2613,20 @@ function renderAdminPageV2(): string {
       menuToggle: document.getElementById("menu-toggle"),
       menuScrim: document.getElementById("menu-scrim"),
       baseUrl: document.getElementById("base-url"),
-      projectList: document.getElementById("project-list"),
+      currentProjectPill: document.getElementById("current-project-pill"),
+      projectSwitcher: document.getElementById("project-switcher"),
       dashboardProjects: document.getElementById("dashboard-projects"),
       modelHealth: document.getElementById("model-health"),
       projectStatus: document.getElementById("project-status"),
       accountStatus: document.getElementById("account-status"),
       accountsTable: document.getElementById("accounts-table"),
-      settingsProject: document.getElementById("settings-project"),
+      settingsProjectLabel: document.getElementById("settings-project-label"),
       projectKeys: document.getElementById("project-keys"),
       keyStatus: document.getElementById("key-status"),
       routingStatus: document.getElementById("routing-status"),
       modelStatus: document.getElementById("model-status"),
       opsStatus: document.getElementById("ops-status"),
+      projectModal: document.getElementById("project-modal"),
     };
     const pageMeta = {
       dashboard: ["仪表盘", "查看整体项目、账号池和调用健康。"],
@@ -2591,6 +2638,9 @@ function renderAdminPageV2(): string {
     let summary = {};
     let projectStats = [];
     let publicStatus = {};
+    let currentModels = [];
+    let discoveredModels = [];
+    let editingProjectId = null;
     let selectedProjectId = localStorage.getItem("hyhub-selected-project") || "default-rt";
     let selectedAccountIds = new Set();
     els.token.value = localStorage.getItem("hyhub-admin-token") || "";
@@ -2614,6 +2664,7 @@ function renderAdminPageV2(): string {
     }
     function selectedProject() { return projects.find((project) => project.id === selectedProjectId) || projects[0] || null; }
     function projectPath(path) { return "/admin/projects/" + encodeURIComponent(selectedProjectId) + path; }
+    function projectStat(id) { return projectStats.find((item) => item.project?.id === id)?.summary || {}; }
     function parseHeaders() {
       const raw = document.getElementById("account-extra-headers").value.trim();
       return raw ? JSON.parse(raw) : undefined;
@@ -2636,6 +2687,24 @@ function renderAdminPageV2(): string {
       els.app.classList.remove("menu-open");
       document.body.classList.remove("menu-lock");
       els.menuToggle.setAttribute("aria-expanded", "false");
+    }
+    function renderProjectSwitcher() {
+      els.projectSwitcher.innerHTML = projects.length ? projects.map((project) => {
+        const itemSummary = projectStat(project.id);
+        return '<button class="project-item ' + (project.id === selectedProjectId ? 'active' : '') + '" onclick="selectProject(\\'' + escapeHtml(project.id) + '\\')"><b>' + escapeHtml(project.name) + '</b><span class="meta"><span class="mono">' + escapeHtml(project.id) + '</span><span>' + (itemSummary.available || 0) + '/' + (project.accountCount || 0) + '</span></span></button>';
+      }).join("") : '<div class="empty">暂无项目。</div>';
+    }
+    function renderCurrentProjectContext() {
+      const project = selectedProject();
+      const itemSummary = project ? projectStat(project.id) : {};
+      const label = project ? project.name + ' · ' + project.id : '未选择项目';
+      els.currentProjectPill.textContent = label;
+      els.settingsProjectLabel.textContent = label;
+      document.getElementById("workspace-project-name").textContent = project ? project.name : "当前项目";
+      document.getElementById("selected-project-tag").textContent = project ? project.id : "未选择";
+      document.getElementById("workspace-project-meta").textContent = project
+        ? "账号 " + (project.accountCount || 0) + "，可用 " + (itemSummary.available || 0) + "，待处理 " + (itemSummary.actionRequired || 0) + "，API Key " + (project.keyCount || 0)
+        : "";
     }
     function renderDashboard() {
       document.getElementById("dash-projects").textContent = projects.length;
@@ -2661,14 +2730,8 @@ function renderAdminPageV2(): string {
       }).join("") : '<div class="empty">暂无模型调用统计。</div>';
     }
     function renderProjects() {
-      els.projectList.innerHTML = projects.map((project) => '<div class="list-item ' + (project.id === selectedProjectId ? 'active' : '') + '" onclick="selectProject(\\'' + escapeHtml(project.id) + '\\')"><div class="row"><b>' + escapeHtml(project.name) + '</b><span class="tag ' + (project.enabled ? 'ok' : 'warn') + '">' + (project.enabled ? '启用' : '停用') + '</span></div><div class="muted mono">' + escapeHtml(project.id) + '</div><div class="muted">账号 ' + (project.accountCount || 0) + ' / Key ' + (project.keyCount || 0) + '</div></div>').join("");
-      const project = selectedProject();
-      document.getElementById("selected-project-tag").textContent = project ? project.id : "未选择";
-      document.getElementById("project-id").value = project?.id || "";
-      document.getElementById("project-id").disabled = !!project;
-      document.getElementById("project-name").value = project?.name || "";
-      document.getElementById("project-enabled").checked = project?.enabled !== false;
-      els.settingsProject.innerHTML = projects.map((item) => '<option value="' + escapeHtml(item.id) + '" ' + (item.id === selectedProjectId ? 'selected' : '') + '>' + escapeHtml(item.name) + '</option>').join("");
+      renderProjectSwitcher();
+      renderCurrentProjectContext();
       renderKeys();
     }
     function renderAccounts() {
@@ -2726,9 +2789,13 @@ function renderAdminPageV2(): string {
     async function loadModels() {
       if (!selectedProjectId) return;
       const data = await api(projectPath("/models"));
-      document.getElementById("open-models").value = (data.models || []).join("\\n");
+      currentModels = data.models || [];
+      discoveredModels = [];
+      document.getElementById("open-models").value = currentModels.join("\\n");
+      document.getElementById("open-models-advanced").value = currentModels.join("\\n");
       const project = selectedProject();
       document.getElementById("api-test-model").placeholder = project ? "账号检测模型，例如 " + project.id + "/gpt-5.5" : "账号检测模型";
+      renderModelPicker();
     }
     async function verifyLogin() {
       try {
@@ -2752,15 +2819,31 @@ function renderAdminPageV2(): string {
       await loadModels();
       renderProjects();
       renderAccounts();
+      renderModelPicker();
       if (goProjects) setPage("projects");
     };
+    function openProjectModal(project) {
+      editingProjectId = project?.id || null;
+      document.getElementById("project-modal-title").textContent = project ? "编辑项目" : "新建项目";
+      document.getElementById("project-modal-desc").textContent = project ? "修改当前项目名称和启用状态；项目 ID 作为模型前缀保持不变。" : "项目会成为全局工作区，账号池、API Key 和模型都跟随项目切换。";
+      document.getElementById("project-id").value = project?.id || "";
+      document.getElementById("project-id").disabled = !!project;
+      document.getElementById("project-name").value = project?.name || "";
+      document.getElementById("project-enabled").checked = project?.enabled !== false;
+      els.projectModal.classList.remove("hidden");
+    }
+    function closeProjectModal() {
+      editingProjectId = null;
+      els.projectModal.classList.add("hidden");
+    }
     async function saveProject() {
       try {
         const id = document.getElementById("project-id").value.trim();
-        const existing = projects.some((project) => project.id === id);
+        const existing = !!editingProjectId;
         const payload = { id: existing ? undefined : id || undefined, name: document.getElementById("project-name").value.trim() || undefined, enabled: document.getElementById("project-enabled").checked };
-        const data = await api(existing ? "/admin/projects/" + encodeURIComponent(id) : "/admin/projects", { method: existing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+        const data = await api(existing ? "/admin/projects/" + encodeURIComponent(editingProjectId) : "/admin/projects", { method: existing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
         selectedProjectId = data.project.id;
+        closeProjectModal();
         await refreshAll();
         status(els.projectStatus, "项目已保存。");
       } catch (error) { status(els.projectStatus, error.message, true); }
@@ -2856,17 +2939,36 @@ function renderAdminPageV2(): string {
     }
     async function saveModels() {
       try {
-        const models = document.getElementById("open-models").value.split(/[\\n,]+/).map((item) => item.trim()).filter(Boolean);
+        const boxes = [...document.querySelectorAll("[data-model-check]")];
+        const checked = boxes.filter((input) => input.checked).map((input) => input.getAttribute("data-model-check"));
+        const manual = document.getElementById("open-models-advanced").value.split(/[\\n,]+/).map((item) => item.trim()).filter(Boolean);
+        const models = boxes.length ? checked : manual;
         await api(projectPath("/models"), { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ models }) });
+        currentModels = models;
+        document.getElementById("open-models").value = models.join("\\n");
+        document.getElementById("open-models-advanced").value = models.join("\\n");
+        renderModelPicker();
         status(els.modelStatus, "开放模型已保存。");
       } catch (error) { status(els.modelStatus, error.message, true); }
+    }
+    function renderModelPicker() {
+      const models = discoveredModels.length ? discoveredModels : currentModels.map((model) => ({ model, publicModel: (selectedProject()?.id || selectedProjectId) + "/" + model, accounts: [] }));
+      document.getElementById("enabled-models-summary").textContent = currentModels.length
+        ? "已开放 " + currentModels.length + " 个模型。客户端使用 " + (selectedProject()?.id || selectedProjectId) + "/模型名 调用。"
+        : "当前项目还没有开放模型。先从账号池拉取，然后勾选保存。";
+      document.getElementById("discovered-models").innerHTML = models.length ? models.map((item) => {
+        const checked = currentModels.includes(item.model) ? "checked" : "";
+        const accountText = item.accounts?.length ? item.accounts.length + " 个账号返回" : "已保存";
+        return '<label class="model-option"><input type="checkbox" data-model-check="' + escapeHtml(item.model) + '" ' + checked + ' /><span><b class="mono">' + escapeHtml(item.publicModel || ((selectedProject()?.id || selectedProjectId) + "/" + item.model)) + '</b><span class="muted" style="display:block">' + accountText + '</span></span></label>';
+      }).join("") : '<div class="empty">还没有模型候选。点击“从账号池拉取模型”。</div>';
     }
     async function discoverModels() {
       try {
         const limit = Number(document.getElementById("model-discovery-limit").value || 8);
         const data = await api(projectPath("/models/discover"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ limit }) });
-        document.getElementById("discovered-models").innerHTML = (data.recommendations || []).map((item) => '<div class="list-item" onclick="addModel(\\'' + escapeHtml(item.model) + '\\')"><b class="mono">' + escapeHtml(item.publicModel || item.model) + '</b><span class="muted">' + (item.accounts?.length || 0) + ' 个账号返回</span></div>').join("") || '<div class="empty">没有发现模型。</div>';
-        status(els.modelStatus, "扫描完成。点击候选模型可加入列表。");
+        discoveredModels = data.recommendations || [];
+        renderModelPicker();
+        status(els.modelStatus, "拉取完成。勾选要开放的模型后保存。");
       } catch (error) { status(els.modelStatus, error.message, true); }
     }
     window.addModel = function(model) {
@@ -2874,6 +2976,7 @@ function renderAdminPageV2(): string {
       const items = new Set(input.value.split(/[\\n,]+/).map((item) => item.trim()).filter(Boolean));
       items.add(model);
       input.value = [...items].join("\\n");
+      document.getElementById("open-models-advanced").value = input.value;
     };
     async function exportAccounts() {
       const data = await api(projectPath("/accounts/export"));
@@ -2916,7 +3019,12 @@ function renderAdminPageV2(): string {
     els.token.addEventListener("keydown", (event) => { if (event.key === "Enter") verifyLogin(); });
     document.getElementById("reload").addEventListener("click", refreshAll);
     document.getElementById("logout").addEventListener("click", () => { localStorage.removeItem("hyhub-admin-token"); location.reload(); });
-    document.getElementById("new-project").addEventListener("click", () => { selectedProjectId = ""; document.getElementById("project-id").disabled = false; document.getElementById("project-id").value = ""; document.getElementById("project-name").value = ""; document.getElementById("project-enabled").checked = true; });
+    document.getElementById("new-project").addEventListener("click", () => openProjectModal(null));
+    document.getElementById("edit-project").addEventListener("click", () => openProjectModal(selectedProject()));
+    document.getElementById("close-project-modal").addEventListener("click", closeProjectModal);
+    document.getElementById("cancel-project-modal").addEventListener("click", closeProjectModal);
+    els.projectModal.addEventListener("click", (event) => { if (event.target === els.projectModal) closeProjectModal(); });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeProjectModal(); });
     document.getElementById("save-project").addEventListener("click", saveProject);
     document.getElementById("delete-project").addEventListener("click", deleteProject);
     document.getElementById("clear-account").addEventListener("click", clearAccountForm);
@@ -2924,7 +3032,6 @@ function renderAdminPageV2(): string {
     document.getElementById("test-project-accounts").addEventListener("click", async () => { const data = await api(projectPath("/accounts/test-all"), { method: "POST" }); status(els.accountStatus, "检测完成：" + (data.okCount || 0) + "/" + (data.total || 0) + " 可用。"); await refreshAll(); });
     document.getElementById("batch-enable").addEventListener("click", () => batchToggle(true));
     document.getElementById("batch-disable").addEventListener("click", () => batchToggle(false));
-    document.getElementById("settings-project").addEventListener("change", async (event) => { await window.selectProject(event.target.value); renderKeys(); await loadModels(); });
     document.getElementById("create-key").addEventListener("click", createKey);
     document.getElementById("copy-base-url").addEventListener("click", async () => { await navigator.clipboard.writeText(window.location.origin + "/v1"); status(els.keyStatus, "Base URL 已复制。"); });
     document.getElementById("save-routing").addEventListener("click", saveRouting);
