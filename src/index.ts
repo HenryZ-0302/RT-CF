@@ -1231,13 +1231,14 @@ function renderAdminPageV2(): string {
     .dropdown button:hover { background: var(--panel-soft); }
     .dropdown button.danger-text { color: var(--bad); }
     .dropdown button.danger-text:hover { background: rgba(239, 68, 68, 0.1); }
-    .project-item-wrap { position: relative; display: flex; align-items: stretch; border: 1px solid transparent; border-radius: 10px; transition: all 150ms ease; margin-bottom: 2px; }
+    .project-item-wrap { position: relative; display: flex; align-items: stretch; border: 1px solid transparent; border-radius: 10px; transition: transform 150ms ease, background 150ms ease, border-color 150ms ease, box-shadow 150ms ease; margin-bottom: 2px; }
     .project-item-wrap.active { border-color: rgba(59,130,246,0.35); background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.05)); }
+    .project-item-wrap:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(59,130,246,0.12); }
     .project-item-wrap:hover:not(.active) { background: var(--panel-soft); }
-    .project-item-wrap .project-item { border: none !important; background: transparent !important; margin: 0; }
+    .project-item-wrap .project-item { border: none !important; background: transparent !important; margin: 0; transform: none !important; box-shadow: none !important; }
     .project-dots { width: 32px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; background: transparent; color: var(--muted); border: none; cursor: pointer; border-radius: 0 10px 10px 0; opacity: 0.5; transition: opacity 150ms; box-shadow: none; transform: none; padding: 0; }
     .project-item-wrap:hover .project-dots { opacity: 1; }
-    .project-dots:hover { background: rgba(0,0,0,0.05); }
+    .project-dots:hover { background: rgba(0,0,0,0.05); transform: none !important; box-shadow: none !important; }
   </style>
 </head>
 <body>
