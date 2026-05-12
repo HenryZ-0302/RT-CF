@@ -1077,11 +1077,25 @@ function renderAdminPageV2(): string {
     .model-pick { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: var(--panel); }
     .model-pick input { width: auto; margin-top: 3px; }
     .setting-card { display: grid; gap: 12px; align-content: start; }
+    .client-config { display: grid; gap: 10px; }
+    .snippet-card { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: var(--panel); }
+    .snippet-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .snippet-card textarea { min-height: 44px; font-family: var(--font-sans); font-variant-numeric: tabular-nums; white-space: pre; overflow: auto; resize: vertical; }
+    .snippet-card textarea.code { min-height: 116px; }
+    .backup-actions { display: grid; gap: 10px; }
+    .backup-action-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .backup-note { border: 1px solid rgba(245, 158, 11, .35); border-radius: 8px; padding: 10px; color: var(--muted); background: rgba(245, 158, 11, .08); }
     .advanced-models { margin-top: 12px; }
     .advanced-models summary { cursor: pointer; color: var(--muted); }
     .list { display: grid; gap: 8px; }
     .list-item { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 12px; display: grid; gap: 7px; cursor: pointer; }
     .list-item.active { border-color: rgba(37, 99, 235, .55); box-shadow: 0 0 0 3px rgba(37, 99, 235, .09); }
+    .list-item.warn-card { border-color: rgba(245, 158, 11, .42); background: color-mix(in srgb, var(--panel) 84%, rgba(245,158,11,.16)); }
+    .health-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .health-metric { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--panel-soft); }
+    .health-metric b { display: block; font-size: 18px; line-height: 1.1; }
+    .health-metric span { color: var(--muted); font-size: 12px; }
+    .project-warning { border: 1px solid rgba(245, 158, 11, .5); color: var(--warn); border-radius: 8px; padding: 8px 10px; background: rgba(245, 158, 11, .08); }
     .toolbar, .actions, .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
     .row { justify-content: space-between; }
     .tag { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); color: var(--muted); border-radius: 999px; padding: 4px 8px; font-size: 12px; }
@@ -1361,6 +1375,18 @@ function renderAdminPageV2(): string {
           <section class="panel setting-card">
             <div class="row">
               <div>
+                <h3>当前项目客户端配置</h3>
+                <p class="muted" id="client-config-desc" style="margin:4px 0 0">选择一个项目 API Key，直接复制给用户。</p>
+              </div>
+              <span class="tag" id="client-config-project">未选择项目</span>
+            </div>
+            <select id="client-config-key"></select>
+            <div id="client-config-snippets" class="client-config"></div>
+            <div class="status" id="client-config-status"></div>
+          </section>
+          <section class="panel setting-card">
+            <div class="row">
+              <div>
                 <h3>API 密钥</h3>
                 <p class="muted" style="margin:4px 0 0">密钥可以开放给全部项目、单个项目或多个项目。</p>
               </div>
@@ -1395,11 +1421,26 @@ function renderAdminPageV2(): string {
             <div class="actions"><button id="save-routing">保存路由策略</button></div>
             <div class="status" id="routing-status"></div>
           </section>
-          <section class="panel setting-card">
+          <section class="panel setting-card" id="backup-panel">
             <h3>备份 / 恢复 / 统计</h3>
-            <p class="muted">默认导出和恢复所有项目、账号池、API Key、路由策略和统计快照。</p>
-            <div class="actions">
-              <button id="open-ops-modal" class="secondary">打开数据操作</button>
+            <p class="muted">全量备份会导出所有项目、账号池、API Key、路由策略、健康状态和统计快照。</p>
+            <div class="backup-actions">
+              <div class="backup-action-row">
+                <button id="export-backup" class="secondary">全量备份</button>
+                <button id="restore-backup" class="secondary">恢复备份</button>
+                <button id="reset-stats" class="danger">清空统计</button>
+              </div>
+              <div class="backup-note">恢复备份会覆盖当前存储里的项目、账号池、API Key、路由策略和统计数据。建议恢复前先导出一次当前全量备份。</div>
+              <div class="row">
+                <div>
+                  <h3 style="font-size:15px">当前项目账号数据</h3>
+                  <p class="muted" id="project-backup-desc" style="margin:4px 0 0">只导入/导出侧边栏当前项目的上游账号池。</p>
+                </div>
+                <div class="actions">
+                  <button id="export-accounts" class="ghost">导出当前项目账号</button>
+                  <button id="import-accounts" class="ghost">导入当前项目账号</button>
+                </div>
+              </div>
             </div>
             <div class="status" id="ops-status"></div>
           </section>
@@ -1510,25 +1551,6 @@ function renderAdminPageV2(): string {
     </div>
   </div>
 
-  <div id="ops-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
-    <div class="modal">
-      <div class="modal-head">
-        <div>
-          <h3>数据操作</h3>
-          <p class="muted" id="ops-modal-desc" style="margin:6px 0 0">默认操作所有项目；项目账号导入导出会作用于当前项目工作区。</p>
-        </div>
-        <button id="close-ops-modal" class="ghost icon-btn" aria-label="关闭">×</button>
-      </div>
-      <div class="actions">
-        <button id="export-backup" class="secondary">全量备份</button>
-        <button id="restore-backup" class="secondary">恢复备份</button>
-        <button id="export-accounts" class="ghost">导出当前项目账号</button>
-        <button id="import-accounts" class="ghost">导入当前项目账号</button>
-        <button id="reset-stats" class="danger">清空统计</button>
-      </div>
-    </div>
-  </div>
-
   <script>
     const els = {
       gate: document.getElementById("gate"),
@@ -1552,6 +1574,11 @@ function renderAdminPageV2(): string {
       accountsTable: document.getElementById("accounts-table"),
       keysTable: document.getElementById("keys-table"),
       keyStatus: document.getElementById("key-status"),
+      clientConfigProject: document.getElementById("client-config-project"),
+      clientConfigDesc: document.getElementById("client-config-desc"),
+      clientConfigKey: document.getElementById("client-config-key"),
+      clientConfigSnippets: document.getElementById("client-config-snippets"),
+      clientConfigStatus: document.getElementById("client-config-status"),
       modelProjectSelect: document.getElementById("model-project-select"),
       modelSettingsSummary: document.getElementById("model-settings-summary"),
       modelSettingsStatus: document.getElementById("model-settings-status"),
@@ -1561,7 +1588,6 @@ function renderAdminPageV2(): string {
       accountModal: document.getElementById("account-modal"),
       keyModal: document.getElementById("key-modal"),
       modelModal: document.getElementById("model-modal"),
-      opsModal: document.getElementById("ops-modal"),
     };
     const pageMeta = {
       dashboard: ["仪表盘", "查看整体项目、账号池和调用健康。"],
@@ -1607,6 +1633,9 @@ function renderAdminPageV2(): string {
     function projectKeyCount(projectId) {
       return globalKeys.filter((key) => key.projects === "ALL" || (Array.isArray(key.projects) && key.projects.includes(projectId))).length;
     }
+    function keysForProject(projectId) {
+      return globalKeys.filter((key) => key.projects === "ALL" || (Array.isArray(key.projects) && key.projects.includes(projectId)));
+    }
     function projectName(id) {
       const project = projects.find((item) => item.id === id);
       return project ? project.name : id;
@@ -1624,6 +1653,13 @@ function renderAdminPageV2(): string {
         ? '<span class="tag ok">全部项目</span>'
         : (scope || []).map((id) => '<span class="tag">' + escapeHtml(projectName(id)) + '</span>').join("");
     }
+    function clientConfigValue(id) {
+      return document.getElementById(id)?.value || "";
+    }
+    window.copyClientConfig = async function(id) {
+      await navigator.clipboard.writeText(clientConfigValue(id));
+      status(els.clientConfigStatus, "已复制。");
+    };
     function parseHeaders() {
       const raw = document.getElementById("account-extra-headers").value.trim();
       return raw ? JSON.parse(raw) : undefined;
@@ -1664,6 +1700,8 @@ function renderAdminPageV2(): string {
       els.currentProjectPill.textContent = "项目工作区：" + label;
       document.getElementById("workspace-project-name").textContent = project ? project.name : "当前项目";
       document.getElementById("selected-project-tag").textContent = project ? project.id : "未选择";
+      const projectBackupDesc = document.getElementById("project-backup-desc");
+      if (projectBackupDesc) projectBackupDesc.textContent = project ? "只导入/导出项目 [" + project.name + "] 的上游账号池。" : "只导入/导出侧边栏当前项目的上游账号池。";
       document.getElementById("workspace-project-meta").textContent = project
         ? "账号 " + (project.accountCount || 0) + "，可用 " + (itemSummary.available || 0) + "，待处理 " + (itemSummary.actionRequired || 0) + "，API Key " + projectKeyCount(project.id)
         : "";
@@ -1694,7 +1732,17 @@ function renderAdminPageV2(): string {
           const project = item.project || {};
           const itemSummary = item.summary || {};
           const rate = itemSummary.calls > 0 ? itemSummary.successRate + '%' : '暂无';
-          return '<div class="list-item" onclick="selectProject(\\'' + escapeHtml(project.id) + '\\', true)"><div class="row"><b>' + escapeHtml(project.name) + '</b><span class="tag ' + (project.enabled ? 'ok' : 'warn') + '">' + (project.enabled ? '启用' : '停用') + '</span></div><div class="muted mono">' + escapeHtml(project.id) + '</div><div class="muted">账号 ' + (project.accountCount || 0) + ' / 可用 ' + (itemSummary.available || 0) + ' / 待处理 ' + (itemSummary.actionRequired || 0) + '</div><div class="muted">调用 ' + fmt(itemSummary.calls || 0) + ' / 失败 ' + fmt(itemSummary.errors || 0) + ' / 成功率 ' + rate + '</div></div>';
+          const enabledAccounts = itemSummary.enabled || 0;
+          const availableAccounts = itemSummary.available || 0;
+          const keyCount = projectKeyCount(project.id);
+          const broken = project.enabled && availableAccounts === 0;
+          return '<div class="list-item ' + (broken ? 'warn-card' : '') + '" onclick="selectProject(\\'' + escapeHtml(project.id) + '\\', true)">' +
+            '<div class="row"><b>' + escapeHtml(project.name) + '</b><span class="tag ' + (broken ? 'bad' : project.enabled ? 'ok' : 'warn') + '">' + (broken ? '无可用上游' : project.enabled ? '启用' : '停用') + '</span></div>' +
+            '<div class="muted mono">' + escapeHtml(project.id) + '</div>' +
+            (broken ? '<div class="project-warning">项目已启用，但当前没有可用上游账号，客户端请求可能会失败。</div>' : '') +
+            '<div class="health-metrics"><div class="health-metric"><b>' + enabledAccounts + '</b><span>启用账号</span></div><div class="health-metric"><b>' + availableAccounts + '</b><span>当前可用</span></div><div class="health-metric"><b>' + keyCount + '</b><span>API Key</span></div></div>' +
+            '<div class="muted">待处理 ' + (itemSummary.actionRequired || 0) + ' / 调用 ' + fmt(itemSummary.calls || 0) + ' / 失败 ' + fmt(itemSummary.errors || 0) + ' / 成功率 ' + rate + '</div>' +
+          '</div>';
         })
         .join("") : '<div class="empty">暂无项目。</div>';
       const modelHealth = dashboardScope === "project"
@@ -1753,6 +1801,55 @@ function renderAdminPageV2(): string {
         return '<tr><td><b>' + escapeHtml(key.name || "未命名") + '</b><div class="muted mono">' + escapeHtml(key.id) + '</div></td><td><div class="mono">' + escapeHtml(key.key) + '</div></td><td><div class="toolbar">' + allowed + '</div></td><td><div class="actions"><button class="ghost" onclick="copyKey(\\'' + escapeHtml(key.key) + '\\')">复制</button><button class="ghost" onclick="editKey(\\'' + escapeHtml(key.id) + '\\')">编辑</button><button class="danger" onclick="deleteKey(\\'' + escapeHtml(key.id) + '\\')">删除</button></div></td></tr>';
       }).join("") + '</tbody></table></div>';
     }
+    function renderClientConfig() {
+      const project = selectedProject();
+      if (!project) {
+        els.clientConfigProject.textContent = "未选择项目";
+        els.clientConfigDesc.textContent = "先创建项目和 API Key。";
+        els.clientConfigKey.innerHTML = "";
+        els.clientConfigSnippets.innerHTML = '<div class="empty">暂无项目。</div>';
+        return;
+      }
+      const usableKeys = keysForProject(project.id);
+      els.clientConfigProject.textContent = project.name + " · " + project.id;
+      els.clientConfigDesc.textContent = "这些示例固定指向侧边栏当前项目，可直接交给这个项目的用户。";
+      if (!usableKeys.length) {
+        els.clientConfigKey.innerHTML = "";
+        els.clientConfigSnippets.innerHTML = '<div class="empty">这个项目还没有可用 API Key。先在 API 密钥区域创建一个单项目或多项目 Key。</div>';
+        return;
+      }
+      const previous = els.clientConfigKey.value;
+      els.clientConfigKey.innerHTML = usableKeys.map((key) => '<option value="' + escapeHtml(key.id) + '">' + escapeHtml(key.name || key.id) + ' · ' + escapeHtml(key.projects === "ALL" ? "全部项目" : project.name) + '</option>').join("");
+      if (usableKeys.some((key) => key.id === previous)) els.clientConfigKey.value = previous;
+      const selectedKey = usableKeys.find((key) => key.id === els.clientConfigKey.value) || usableKeys[0];
+      const baseUrl = window.location.origin + "/v1";
+      const bearer = "Authorization: Bearer " + selectedKey.key;
+      const curlModels = 'curl "' + baseUrl + '/models" \\\\\\n  -H "' + bearer + '"';
+      const sampleModel = project.id + "/gpt-4.1-mini";
+      const clientSnippet = [
+        'import OpenAI from "openai";',
+        '',
+        'const client = new OpenAI({',
+        '  apiKey: "' + selectedKey.key + '",',
+        '  baseURL: "' + baseUrl + '",',
+        '});',
+        '',
+        'const models = await client.models.list();',
+        'const completion = await client.chat.completions.create({',
+        '  model: "' + sampleModel + '",',
+        '  messages: [{ role: "user", content: "Hello" }],',
+        '});',
+      ].join("\\n");
+      els.clientConfigSnippets.innerHTML = [
+        snippetHtml("Base URL", "client-base-url", baseUrl),
+        snippetHtml("Bearer API Key", "client-bearer", bearer),
+        snippetHtml("curl /v1/models", "client-curl-models", curlModels, true),
+        snippetHtml("OpenAI-compatible client", "client-openai-snippet", clientSnippet, true),
+      ].join("");
+    }
+    function snippetHtml(title, id, value, code) {
+      return '<div class="snippet-card"><div class="snippet-head"><b>' + escapeHtml(title) + '</b><button class="ghost" onclick="copyClientConfig(\\'' + id + '\\')">复制</button></div><textarea id="' + id + '" class="' + (code ? 'code' : '') + '" readonly>' + escapeHtml(value) + '</textarea></div>';
+    }
     function renderModelSettingsSummary() {
       if (!projects.some((project) => project.id === modelProjectId)) modelProjectId = selectedProjectId;
       els.modelProjectSelect.innerHTML = projects.map((project) => '<option value="' + escapeHtml(project.id) + '">' + escapeHtml(project.name) + '</option>').join("");
@@ -1766,6 +1863,7 @@ function renderAdminPageV2(): string {
       els.modelSettingsSummary.innerHTML = '<div class="list-item"><div class="row"><b>' + escapeHtml(project.name) + '</b><span class="tag">' + models.length + ' 个开放模型</span></div><div class="muted mono">' + escapeHtml(project.id) + '</div><div class="toolbar">' + (models.length ? models.slice(0, 8).map((model) => '<span class="tag mono">' + escapeHtml(project.id + '/' + model) + '</span>').join('') : '<span class="muted">还没有配置开放模型，可先拉取模型列表。</span>') + '</div></div>';
     }
     function renderSettings() {
+      renderClientConfig();
       renderKeys();
       renderModelSettingsSummary();
     }
@@ -1860,11 +1958,9 @@ function renderAdminPageV2(): string {
     function closeAccountModal() {
       els.accountModal.classList.add("hidden");
     }
-    function openOpsModal() {
-      els.opsModal.classList.remove("hidden");
-    }
-    function closeOpsModal() {
-      els.opsModal.classList.add("hidden");
+    function focusBackupPanel() {
+      setPage("settings");
+      document.getElementById("backup-panel").scrollIntoView({ behavior: "smooth", block: "start" });
     }
     async function saveProject() {
       try {
@@ -2086,7 +2182,6 @@ function renderAdminPageV2(): string {
     async function exportBackup() {
       const data = await api("/admin/backup");
       downloadJson("hyhub-backup-" + new Date().toISOString().slice(0, 10) + ".json", data);
-      closeOpsModal();
       status(els.opsStatus, "全量备份已导出。");
     }
     async function restoreBackup() {
@@ -2100,7 +2195,6 @@ function renderAdminPageV2(): string {
         const payload = JSON.parse(await file.text());
         const data = await api("/admin/backup/restore", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
         await refreshAll();
-        closeOpsModal();
         status(els.opsStatus, "恢复完成：项目 " + (data.projects || 0) + "，账号 " + (data.accounts || 0) + "，密钥 " + (data.apiKeys || 0) + "。");
       };
       input.click();
@@ -2108,7 +2202,6 @@ function renderAdminPageV2(): string {
     async function exportAccounts() {
       const data = await api(projectPath("/accounts/export"));
       downloadJson(selectedProjectId + "-accounts.json", data);
-      closeOpsModal();
       status(els.opsStatus, "账号已导出。");
     }
     async function importAccounts() {
@@ -2121,7 +2214,6 @@ function renderAdminPageV2(): string {
         const payload = JSON.parse(await file.text());
         await api(projectPath("/accounts/import"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
         await refreshAll();
-        closeOpsModal();
         status(els.opsStatus, "账号已导入。");
       };
       input.click();
@@ -2130,7 +2222,6 @@ function renderAdminPageV2(): string {
       if (!confirm("确认清空真实 API 调用统计？")) return;
       await api("/admin/stats/reset", { method: "POST" });
       await refreshAll();
-      closeOpsModal();
       status(els.opsStatus, "统计已清空。");
     }
     document.querySelectorAll(".nav-btn").forEach((btn) => btn.addEventListener("click", () => setPage(btn.dataset.page)));
@@ -2145,7 +2236,7 @@ function renderAdminPageV2(): string {
     document.getElementById("logout").addEventListener("click", () => { localStorage.removeItem("hyhub-admin-token"); location.reload(); });
     document.getElementById("new-project").addEventListener("click", () => openProjectModal(null));
     document.getElementById("edit-project").addEventListener("click", () => openProjectModal(selectedProject()));
-    document.getElementById("open-project-data-modal").addEventListener("click", openOpsModal);
+    document.getElementById("open-project-data-modal").addEventListener("click", focusBackupPanel);
     document.getElementById("close-project-modal").addEventListener("click", closeProjectModal);
     document.getElementById("cancel-project-modal").addEventListener("click", closeProjectModal);
     els.projectModal.addEventListener("click", (event) => { if (event.target === els.projectModal) closeProjectModal(); });
@@ -2153,15 +2244,12 @@ function renderAdminPageV2(): string {
     document.getElementById("close-account-modal").addEventListener("click", closeAccountModal);
     document.getElementById("cancel-account-modal").addEventListener("click", closeAccountModal);
     els.accountModal.addEventListener("click", (event) => { if (event.target === els.accountModal) closeAccountModal(); });
-    document.getElementById("open-ops-modal").addEventListener("click", openOpsModal);
-    document.getElementById("close-ops-modal").addEventListener("click", closeOpsModal);
-    els.opsModal.addEventListener("click", (event) => { if (event.target === els.opsModal) closeOpsModal(); });
     document.getElementById("close-key-modal").addEventListener("click", closeKeyModal);
     els.keyModal.addEventListener("click", (event) => { if (event.target === els.keyModal) closeKeyModal(); });
     document.getElementById("open-model-modal").addEventListener("click", openModelModal);
     document.getElementById("close-model-modal").addEventListener("click", closeModelModal);
     els.modelModal.addEventListener("click", (event) => { if (event.target === els.modelModal) closeModelModal(); });
-    document.addEventListener("keydown", (event) => { if (event.key === "Escape") { closeProjectModal(); closeAccountModal(); closeKeyModal(); closeModelModal(); closeOpsModal(); } });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") { closeProjectModal(); closeAccountModal(); closeKeyModal(); closeModelModal(); } });
     document.getElementById("save-project").addEventListener("click", saveProject);
     document.getElementById("save-account").addEventListener("click", saveAccount);
     document.getElementById("save-key").addEventListener("click", saveKey);
@@ -2194,6 +2282,7 @@ function renderAdminPageV2(): string {
       localStorage.setItem("hyhub-model-project", modelProjectId);
       renderModelSettingsSummary();
     });
+    els.clientConfigKey.addEventListener("change", renderClientConfig);
     if (getToken()) verifyLogin();
     else status(els.gateStatus, "先输入管理员密钥。");
   </script>
