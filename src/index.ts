@@ -1049,7 +1049,9 @@ function renderAdminPageV2(): string {
     button.danger { background: var(--bad); }
     button:disabled { opacity: .65; cursor: wait; }
     input, textarea, select { width: 100%; border: 1px solid var(--line); background: var(--panel); color: var(--text); padding: 11px 12px; border-radius: 10px; transition: border-color 150ms ease, box-shadow 150ms ease; }
+    input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-width: 16px; flex: 0 0 auto; padding: 0; margin: 0; accent-color: var(--accent); }
     input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.12); }
+    input[type="checkbox"]:focus, input[type="radio"]:focus { box-shadow: none; }
     textarea { min-height: 92px; resize: vertical; }
     .page { display: none; gap: 16px; min-width: 0; }
     .page.active { display: grid; }
@@ -1097,6 +1099,7 @@ function renderAdminPageV2(): string {
     .health-metric span { color: var(--muted); font-size: 12px; }
     .project-warning { border: 1px solid rgba(245, 158, 11, .5); color: var(--warn); border-radius: 8px; padding: 8px 10px; background: rgba(245, 158, 11, .08); }
     .toolbar, .actions, .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    label.toolbar { justify-content: flex-start; align-items: center; width: auto; min-width: 0; line-height: 1.4; }
     .row { justify-content: space-between; }
     .tag { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); color: var(--muted); border-radius: 999px; padding: 4px 8px; font-size: 12px; }
     .tag.ok { color: var(--ok); border-color: rgba(15, 159, 110, .35); }
@@ -1201,18 +1204,28 @@ function renderAdminPageV2(): string {
       nav { grid-template-columns: 1fr; }
       .nav-btn { justify-content: flex-start; white-space: normal; }
       aside .ghost, aside .danger { width: 100%; }
-      .toolbar, .actions {
+      .actions {
         flex-wrap: nowrap;
         overflow-x: auto;
         max-width: 100%;
         padding-bottom: 2px;
         -webkit-overflow-scrolling: touch;
       }
-      .toolbar > *, .actions > * { flex: 0 0 auto; }
+      .actions > * { flex: 0 0 auto; }
+      .toolbar { flex-wrap: wrap; overflow: visible; }
       .panel .actions button { padding: 8px 10px; }
       .accounts-table .actions { display: flex; flex-wrap: nowrap; overflow: visible; padding-bottom: 0; }
       .accounts-table button { padding: 6px 8px; }
       header { display: grid; }
+      .panel { padding: 14px; }
+      .row { align-items: flex-start; gap: 8px; }
+      .setting-card { gap: 10px; }
+      .backup-action-row { display: flex; flex-wrap: wrap; overflow: visible; }
+      .backup-action-row button { flex: 1 1 auto; min-width: 96px; }
+      .health-metrics { grid-template-columns: 1fr; }
+      .snippet-head { align-items: center; }
+      .snippet-card textarea { min-height: 40px; }
+      label.toolbar { display: inline-flex; max-width: 100%; }
       .stats, .grid.two, .grid.three { grid-template-columns: 1fr; }
       .bar { grid-template-columns: 1fr; }
       .workspace-card { grid-template-columns: 1fr; }
